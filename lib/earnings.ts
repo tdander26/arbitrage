@@ -50,7 +50,7 @@ export async function getNextEarnings(
   if (!key) return null;
 
   const from = now.toISOString().slice(0, 10);
-  const to = new Date(now.getTime() + 90 * 86_400_000)
+  const to = new Date(now.getTime() + 180 * 86_400_000)
     .toISOString()
     .slice(0, 10);
   const url = `${BASE}?from=${from}&to=${to}&symbol=${encodeURIComponent(
