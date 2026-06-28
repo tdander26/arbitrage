@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSocialVolume } from "@/lib/social";
 
 export const dynamic = "force-dynamic";
-// Apify runs can take ~20s; allow headroom on Vercel.
-export const maxDuration = 30;
+// Apify TikTok runs can take 30–60s; use the max serverless budget.
+export const maxDuration = 60;
 
 // GET /api/social?keyword=coconut+water
 // Runs the Apify TikTok actor on demand for one keyword and returns a 0–100

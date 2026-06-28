@@ -72,9 +72,11 @@ export async function getSocialVolume(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hashtags: [keyword], resultsPerPage: 30 }),
+        // Keep the result set small so the actor run finishes within the
+        // serverless time budget.
+        body: JSON.stringify({ hashtags: [keyword], resultsPerPage: 10 }),
       },
-      20_000,
+      55_000,
     );
     if (!res.ok) return null;
     const items = (await res.json()) as TikTokItem[];
