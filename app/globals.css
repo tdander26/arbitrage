@@ -184,6 +184,23 @@ body {
   text-decoration: line-through;
 }
 
+.baserates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  padding: 0.7rem 1.1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--muted);
+  background: rgba(0, 229, 153, 0.04);
+}
+.baserates strong {
+  color: var(--fg);
+}
+.baserates strong.pos {
+  color: var(--pos);
+}
+
 .cards {
   display: grid;
   gap: 1px;
@@ -401,6 +418,14 @@ body {
   font-size: 0.72rem;
   line-height: 1.3;
 }
+.exp-move {
+  margin-top: 0.3rem;
+  font-size: 0.66rem;
+  font-family: ui-monospace, monospace;
+  color: var(--amber);
+  cursor: help;
+}
+
 .conv {
   margin-top: 0.3rem;
   font-size: 0.68rem;

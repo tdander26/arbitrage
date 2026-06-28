@@ -221,6 +221,49 @@ export default function Dashboard() {
     return sorted;
   }, [views, sort, hideStatus, windowWeeks]);
 
+  // Historical base rates from real EPS history across the tracked universe.
+  // This is a base-rate panel, not a predictive backtest — a true backtest
+  // needs the signal logged at each past entry, which the journal builds going
+  // forward. The momentum split is a cross-sectional check: do names that are
+  // accelerating *now* also tend to have beaten historically?
+  const base = useMemo(() => {
+    let quarters = 0;
+    let beats = 0;
+    let surpriseSum = 0;
+    let accelBeats = 0;
+    let accelQ = 0;
+    let flatBeats = 0;
+    let flatQ = 0;
+    for (const v of views) {
+      const h = v.o.epsHistory;
+      if (!h || h.length === 0) continue;
+      const accelerating = v.momentumPct > 0;
+      for (const q of h) {
+        const beat = q.actual >= q.estimate;
+        quarters++;
+        if (beat) beats++;
+        if (q.estimate !== 0)
+          surpriseSum += (q.actual - q.estimate) / Math.abs(q.estimate);
+        if (accelerating) {
+          accelQ++;
+          if (beat) accelBeats++;
+        } else {
+          flatQ++;
+          if (beat) flatBeats++;
+        }
+      }
+    }
+    if (quarters === 0) return null;
+    return {
+      quarters,
+      beats,
+      beatRate: beats / quarters,
+      avgSurprise: surpriseSum / quarters,
+      accel: accelQ ? accelBeats / accelQ : null,
+      flat: flatQ ? flatBeats / flatQ : null,
+    };
+  }, [views]);
+
   function toggleStatus(s: Status) {
     setHideStatus((prev) => {
       const next = new Set(prev);
@@ -297,6 +340,26 @@ export default function Dashboard() {
       </header>
 
       {error && <p className="error">⚠ {error}</p>}
+
+      {base && (
+        <div className="baserates" title="Historical base rates from real EPS history of tracked names">
+          <span>
+            <strong>{base.beats}/{base.quarters}</strong> tracked prints beat
+            consensus ({Math.round(base.beatRate * 100)}%)
+          </span>
+          <span>
+            avg surprise{" "}
+            <strong className="pos">+{Math.round(base.avgSurprise * 100)}%</strong>
+          </span>
+          {base.accel != null && base.flat != null && (
+            <span>
+              accelerating names beat{" "}
+              <strong>{Math.round(base.accel * 100)}%</strong> vs{" "}
+              <strong>{Math.round(base.flat * 100)}%</strong> for flat/fading
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="cards">
         {rows.map((v) => {
@@ -397,6 +460,16 @@ export default function Dashboard() {
                     </>
                   )}
                 </span>
+                {o.options && (
+                  <span
+                    className="exp-move"
+                    title={`Options-implied move to the next expiration · ATM IV ${Math.round(
+                      o.options.iv * 100,
+                    )}% · as of ${o.options.asOf}`}
+                  >
+                    ±{Math.round(o.options.expectedMovePct * 100)}% priced in
+                  </span>
+                )}
                 <button
                   className={`conv ${o.conviction}`}
                   title="Click to change conviction"
