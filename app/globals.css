@@ -82,6 +82,26 @@ body {
   color: var(--accent);
   font-style: normal;
 }
+.howto.risk {
+  margin-top: 1.5rem;
+  margin-bottom: 0;
+}
+.howto.risk ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.5rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.disclaimer {
+  margin: 1rem 0 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
 
 .panel {
   background: var(--panel);
@@ -172,7 +192,7 @@ body {
 
 .card {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 1.2rem;
   align-items: center;
   padding: 1rem 1.1rem;
@@ -180,6 +200,38 @@ body {
 }
 .card:hover {
   background: var(--card);
+}
+
+.card-signal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 0.4rem 0.2rem;
+  border-radius: 8px;
+  background: rgba(0, 229, 153, 0.07);
+  border: 1px solid var(--border);
+}
+.signal-score {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  color: var(--accent);
+  line-height: 1;
+}
+.signal-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+.src {
+  color: var(--muted);
+}
+.src.live {
+  color: var(--accent);
 }
 
 .ident {
