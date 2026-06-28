@@ -1,5 +1,7 @@
 # Social Arbitrage Tracker
 
+<!-- Live trends via SerpApi enabled. -->
+
 Spot consumer trends going vertical on social — TikTok virality, rising Google
 searches for products like *coconut water* — **before** they show up in a public
 company's revenue, then review the signal in the months leading up to that
