@@ -105,8 +105,9 @@ async function fetchSerpApiTrends(keyword: string): Promise<TrendPoint[]> {
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
-      // Cache each keyword for 7 days to respect the free quota.
-      next: { revalidate: 604800 },
+      // Cache each keyword for 14 days. With ~21 seeded keywords that's ~45
+      // SerpApi calls/month, leaving comfortable headroom under the free 100.
+      next: { revalidate: 1209600 },
     });
     if (!res.ok) throw new Error(`serpapi HTTP ${res.status}`);
     const json = (await res.json()) as {

@@ -65,6 +65,7 @@ export default function Dashboard() {
     Record<string, ScoreResult | "loading" | "error">
   >({});
   const [form, setForm] = useState({ ticker: "", keyword: "", name: "" });
+  const [formError, setFormError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -251,8 +252,12 @@ export default function Dashboard() {
 
   function submitCustom(e: FormEvent) {
     e.preventDefault();
-    if (!form.ticker.trim() || !form.keyword.trim()) return;
-    add({ ticker: form.ticker, keyword: form.keyword, name: form.name });
+    const res = add({ ticker: form.ticker, keyword: form.keyword, name: form.name });
+    if (!res.ok) {
+      setFormError(res.reason ?? "Couldn't add that.");
+      return;
+    }
+    setFormError(null);
     setForm({ ticker: "", keyword: "", name: "" });
   }
 
@@ -342,6 +347,7 @@ export default function Dashboard() {
         />
         <button type="submit">Score it</button>
       </form>
+      {formError && <p className="custom-status err">{formError}</p>}
 
       {base && (
         <div className="baserates" title="Historical base rates from real EPS history">
