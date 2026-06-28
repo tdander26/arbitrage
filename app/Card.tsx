@@ -156,6 +156,7 @@ export default function Card({
 }) {
   const { o, signal } = view;
   const soon = o.daysToEarnings != null && o.daysToEarnings <= 30;
+  const hasTrend = view.points.length >= 2;
   const beatsCount = o.epsHistory
     ? o.epsHistory.filter((q) => q.actual >= q.estimate).length
     : 0;
@@ -167,6 +168,7 @@ export default function Card({
     quarters: o.epsHistory?.length ?? 0,
     daysToEarnings: o.daysToEarnings,
     expectedMovePct: o.options?.expectedMovePct,
+    hasTrend,
   });
 
   return (
@@ -236,22 +238,31 @@ export default function Card({
       </div>
 
       <div className="card-trend">
-        <Sparkline points={view.points} />
-        <div className="trend-stats">
-          <span
-            className={`mom ${view.momentum >= 0 ? "pos" : "neg"}`}
-            title="Recent 3-mo avg vs. prior 3-mo avg"
-          >
-            {signedPct(view.momentumPct)} momentum
-          </span>
-          <span className="interest">
-            interest {view.latest}/100
-            <span className={`src ${view.source}`}>
-              {view.source === "live" ? " · live" : " · sample"}
-            </span>
-          </span>
-          <TikTokScore keyword={o.keyword} />
-        </div>
+        {hasTrend ? (
+          <>
+            <Sparkline points={view.points} />
+            <div className="trend-stats">
+              <span
+                className={`mom ${view.momentum >= 0 ? "pos" : "neg"}`}
+                title="Recent 3-mo avg vs. prior 3-mo avg"
+              >
+                {signedPct(view.momentumPct)} momentum
+              </span>
+              <span className="interest">
+                interest {view.latest}/100
+                <span className={`src ${view.source}`}>
+                  {view.source === "live" ? " · live" : " · sample"}
+                </span>
+              </span>
+              <TikTokScore keyword={o.keyword} />
+            </div>
+          </>
+        ) : (
+          <div className="trend-stats">
+            <span className="no-trend">no trend data</span>
+            <TikTokScore keyword={o.keyword} />
+          </div>
+        )}
       </div>
 
       <div className="card-earn">

@@ -22,7 +22,7 @@ Built with Next.js 15 (App Router) and deployed on Vercel.
 
 | Signal | Status | How to enable live data |
 | --- | --- | --- |
-| **Google Trends** (search interest) | Live, keyless | Already wired in `lib/trends.ts`. Hit `/api/trends?keyword=coconut+water`. Best-effort — falls back to seeded data if rate-limited from serverless. |
+| **Google Trends** (search interest) | Live via SerpApi | Set `SERPAPI_KEY` — the keyless endpoint is blocked from serverless IPs. Cached a week to fit the free quota; falls back to the keyless endpoint then seeded data. |
 | **Earnings dates + EPS history** | Seeded from real data | Set `FINNHUB_API_KEY` (free) in `lib/earnings.ts` to auto-refresh the next date/estimate per ticker. Beat/miss history is real, verified market data. |
 | **Social volume** (TikTok) | Manual | Set `APIFY_TOKEN`; `lib/social.ts` runs Apify's [TikTok Trends Scraper](https://apify.com/clockworks/tiktok-trends-scraper) for a 0–100 activity score. |
 

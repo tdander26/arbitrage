@@ -77,14 +77,78 @@ async function fetchGoogleTrends(keyword: string): Promise<TrendPoint[]> {
   }));
 }
 
+// SerpApi Google Trends. Reliable from serverless (unlike the keyless endpoint,
+// which Google blocks from datacenter IPs). Results are cached for a week via
+// the Next data cache so a full refresh of the watchlist stays within SerpApi's
+// free monthly quota. Get a key at https://serpapi.com and set SERPAPI_KEY.
+type SerpTimelineEntry = {
+  timestamp?: string;
+  values?: { extracted_value?: number; value?: string }[];
+};
+
+async function fetchSerpApiTrends(keyword: string): Promise<TrendPoint[]> {
+  const key = process.env.SERPAPI_KEY;
+  if (!key) throw new Error("no SERPAPI_KEY");
+
+  const params = new URLSearchParams({
+    engine: "google_trends",
+    q: keyword,
+    data_type: "TIMESERIES",
+    date: "today 12-m",
+    geo: "US",
+    api_key: key,
+  });
+  const url = `https://serpapi.com/search.json?${params}`;
+
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      // Cache each keyword for 7 days to respect the free quota.
+      next: { revalidate: 604800 },
+    });
+    if (!res.ok) throw new Error(`serpapi HTTP ${res.status}`);
+    const json = (await res.json()) as {
+      interest_over_time?: { timeline_data?: SerpTimelineEntry[] };
+      error?: string;
+    };
+    if (json.error) throw new Error(json.error);
+    const timeline = json.interest_over_time?.timeline_data ?? [];
+    const points = timeline
+      .map((d) => {
+        const v = d.values?.[0];
+        const value =
+          v?.extracted_value ?? (v?.value ? Number(v.value) : NaN);
+        const date = d.timestamp
+          ? new Date(Number(d.timestamp) * 1000).toISOString().slice(0, 10)
+          : "";
+        return { date, value };
+      })
+      .filter((p) => p.date && Number.isFinite(p.value));
+    if (points.length === 0) throw new Error("empty serpapi series");
+    return points;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 /**
- * Get a trend series for a keyword. Tries live Google Trends; on any failure
- * returns the supplied sample series flagged as source:"sample".
+ * Get a trend series for a keyword. Tries SerpApi (reliable, keyed), then the
+ * keyless Google endpoint, then falls back to the supplied sample series.
  */
 export async function getTrend(
   keyword: string,
   fallback: TrendPoint[],
 ): Promise<TrendSeries> {
+  // 1) SerpApi — the reliable server-side source.
+  try {
+    const points = await fetchSerpApiTrends(keyword);
+    return { keyword, source: "live", points };
+  } catch {
+    /* fall through */
+  }
+  // 2) Keyless Google endpoint — usually blocked from servers, but free.
   try {
     const points = await fetchGoogleTrends(keyword);
     if (points.length === 0) throw new Error("empty series");
