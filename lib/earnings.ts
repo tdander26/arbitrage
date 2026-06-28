@@ -76,3 +76,47 @@ export async function getNextEarnings(
     return null;
   }
 }
+
+type FinnhubEarning = {
+  actual: number | null;
+  estimate: number | null;
+  period: string; // YYYY-MM-DD
+  quarter: number;
+  year: number;
+};
+
+/**
+ * Trailing reported quarters for a symbol from Finnhub (oldest → newest),
+ * used to compute beat-rate for custom tickers. Null if unavailable.
+ */
+export async function getEarningsHistory(
+  symbol: string,
+  limit = 4,
+): Promise<{ label: string; estimate: number; actual: number }[] | null> {
+  const key = process.env.FINNHUB_API_KEY;
+  if (!key) return null;
+
+  const url = `https://finnhub.io/api/v1/stock/earnings?symbol=${encodeURIComponent(
+    symbol,
+  )}&token=${key}`;
+
+  try {
+    const res = await fetchWithTimeout(url, 4000);
+    if (!res.ok) return null;
+    const rows = (await res.json()) as FinnhubEarning[];
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    // Finnhub returns most-recent first; keep rows with both values.
+    const usable = rows
+      .filter((r) => r.actual != null && r.estimate != null)
+      .slice(0, limit)
+      .reverse();
+    if (usable.length === 0) return null;
+    return usable.map((r) => ({
+      label: `Q${r.quarter} '${String(r.year).slice(2)}`,
+      estimate: r.estimate as number,
+      actual: r.actual as number,
+    }));
+  } catch {
+    return null;
+  }
+}
