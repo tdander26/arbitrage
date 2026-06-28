@@ -1,16 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type {
-  Conviction,
-  EnrichedOpportunity,
-  Status,
-  TrendPoint,
-} from "@/lib/types";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import type { Conviction, EnrichedOpportunity, Status } from "@/lib/types";
 import { momentumOf } from "@/lib/enrich";
 import { beatRate, computeSignal } from "@/lib/signal";
 import { useOverrides } from "./useOverrides";
-import Sparkline from "./Sparkline";
+import { useCustom } from "./useCustom";
+import Card, { type CardView } from "./Card";
 
 type Feed = {
   asOf: string;
@@ -19,8 +15,7 @@ type Feed = {
   opportunities: EnrichedOpportunity[];
 };
 
-type TrendState = { points: TrendPoint[]; source: "live" | "sample" };
-
+type TrendState = { points: { date: string; value: number }[]; source: "live" | "sample" };
 type SortKey = "signal" | "momentum" | "earnings" | "interest";
 
 const STATUS_LABEL: Record<Status, string> = {
@@ -29,118 +24,33 @@ const STATUS_LABEL: Record<Status, string> = {
   passed: "Passed",
 };
 
-const STATUS_CYCLE: Status[] = ["watching", "positioned", "passed"];
-const CONV_CYCLE: Conviction[] = ["low", "medium", "high"];
-
-function nextIn<T>(cycle: T[], current: T): T {
-  const i = cycle.indexOf(current);
-  return cycle[(i + 1) % cycle.length];
-}
-
-function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-function signedPct(n: number): string {
-  return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(0)}%`;
-}
-
-// On-demand TikTok activity score. Calls Apify (via /api/social) only when the
-// user clicks, so we don't burn Apify credits on every page load.
-function TikTokScore({ keyword }: { keyword: string }) {
-  const [state, setState] = useState<
-    "idle" | "loading" | "done" | "unavailable"
-  >("idle");
-  const [score, setScore] = useState<number | null>(null);
-
-  async function check() {
-    setState("loading");
-    try {
-      const res = await fetch(
-        `/api/social?keyword=${encodeURIComponent(keyword)}`,
-        { cache: "no-store" },
-      );
-      const data = await res.json();
-      if (!res.ok || data.score == null) {
-        setState("unavailable");
-        return;
-      }
-      setScore(data.score);
-      setState("done");
-    } catch {
-      setState("unavailable");
-    }
-  }
-
-  if (state === "done")
-    return <span className="tiktok done">TikTok {score}/100</span>;
-  if (state === "unavailable")
-    return (
-      <span className="tiktok off" title="Set APIFY_TOKEN to enable">
-        TikTok n/a
-      </span>
-    );
-
-  return (
-    <button
-      className="tiktok btn"
-      onClick={check}
-      disabled={state === "loading"}
-    >
-      {state === "loading" ? "checking…" : "check TikTok"}
-    </button>
-  );
-}
-
-// Inline-editable note, saved to localStorage on blur.
-function EditableNote({
-  value,
-  onSave,
-}: {
-  value: string;
-  onSave: (v: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-
-  if (editing) {
-    return (
-      <textarea
-        className="note-edit"
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          setEditing(false);
-          if (draft !== value) onSave(draft);
-        }}
-      />
-    );
-  }
-  return (
-    <p
-      className="notes editable"
-      title="Click to edit"
-      onClick={() => {
-        setDraft(value);
-        setEditing(true);
-      }}
-    >
-      {value || <span className="note-empty">+ add a note</span>}
-    </p>
-  );
-}
-
 const WINDOWS: { label: string; weeks: number | null }[] = [
   { label: "Any", weeks: null },
   { label: "≤ 2w", weeks: 2 },
   { label: "≤ 4w", weeks: 4 },
   { label: "≤ 8w", weeks: 8 },
 ];
+
+// One custom-ticker score result from /api/score.
+type ScoreResult = {
+  ticker: string;
+  company: string;
+  product: string;
+  keyword: string;
+  category: string;
+  earningsDate: string | null;
+  earningsTiming?: "am" | "pm";
+  earningsTentative?: boolean;
+  estimateEps?: number;
+  epsHistory?: { label: string; estimate: number; actual: number }[];
+  daysToEarnings: number | null;
+  trend: { points: { date: string; value: number }[]; source: "live" | "sample" };
+  latest: number;
+  momentum: number;
+  momentumPct: number;
+  beat: number;
+  signal: { score: number; acceleration: number; interest: number; conversion: number };
+};
 
 export default function Dashboard() {
   const [feed, setFeed] = useState<Feed | null>(null);
@@ -150,6 +60,11 @@ export default function Dashboard() {
   const [hideStatus, setHideStatus] = useState<Set<Status>>(new Set());
   const [windowWeeks, setWindowWeeks] = useState<number | null>(null);
   const { overrides, setOverride, clearAll } = useOverrides();
+  const { custom, add, remove } = useCustom();
+  const [scores, setScores] = useState<
+    Record<string, ScoreResult | "loading" | "error">
+  >({});
+  const [form, setForm] = useState({ ticker: "", keyword: "", name: "" });
 
   const load = useCallback(async () => {
     try {
@@ -158,8 +73,6 @@ export default function Dashboard() {
       const data: Feed = await res.json();
       setFeed(data);
       setError(null);
-
-      // Upgrade each card's trend to live Google Trends in the background.
       data.opportunities.forEach(async (o) => {
         try {
           const r = await fetch(
@@ -168,14 +81,10 @@ export default function Dashboard() {
           );
           if (!r.ok) return;
           const t = await r.json();
-          if (Array.isArray(t.points) && t.points.length > 1) {
-            setTrends((prev) => ({
-              ...prev,
-              [o.keyword]: { points: t.points, source: t.source },
-            }));
-          }
+          if (Array.isArray(t.points) && t.points.length > 1)
+            setTrends((p) => ({ ...p, [o.keyword]: { points: t.points, source: t.source } }));
         } catch {
-          /* keep seed sample */
+          /* keep sample */
         }
       });
     } catch (e) {
@@ -187,12 +96,33 @@ export default function Dashboard() {
     load();
   }, [load]);
 
-  // Apply user overrides, live trends, momentum and the composite signal.
-  const views = useMemo(() => {
+  // Score any custom tickers we haven't scored yet.
+  useEffect(() => {
+    custom.forEach(async (spec) => {
+      if (scores[spec.ticker]) return;
+      setScores((p) => ({ ...p, [spec.ticker]: "loading" }));
+      try {
+        const qs = new URLSearchParams({
+          ticker: spec.ticker,
+          keyword: spec.keyword,
+          ...(spec.name ? { name: spec.name } : {}),
+        });
+        const r = await fetch(`/api/score?${qs}`, { cache: "no-store" });
+        if (!r.ok) throw new Error();
+        const data: ScoreResult = await r.json();
+        setScores((p) => ({ ...p, [spec.ticker]: data }));
+      } catch {
+        setScores((p) => ({ ...p, [spec.ticker]: "error" }));
+      }
+    });
+  }, [custom, scores]);
+
+  // Seeded names → CardView (apply overrides, live trends, signal).
+  const seededViews: CardView[] = useMemo(() => {
     if (!feed) return [];
     return feed.opportunities.map((base) => {
       const ov = overrides[base.ticker] ?? {};
-      const o: EnrichedOpportunity = {
+      const o = {
         ...base,
         status: ov.status ?? base.status,
         conviction: ov.conviction ?? base.conviction,
@@ -208,43 +138,89 @@ export default function Dashboard() {
     });
   }, [feed, trends, overrides]);
 
-  const rows = useMemo(() => {
-    let filtered = views.filter((v) => !hideStatus.has(v.o.status));
-    if (windowWeeks != null)
-      filtered = filtered.filter((v) => v.o.daysToEarnings <= windowWeeks * 7);
-    const sorted = [...filtered];
-    if (sort === "signal") sorted.sort((a, b) => b.signal.score - a.signal.score);
-    if (sort === "momentum") sorted.sort((a, b) => b.momentum - a.momentum);
-    if (sort === "earnings")
-      sorted.sort((a, b) => a.o.daysToEarnings - b.o.daysToEarnings);
-    if (sort === "interest") sorted.sort((a, b) => b.latest - a.latest);
-    return sorted;
-  }, [views, sort, hideStatus, windowWeeks]);
+  // Custom tickers → CardView.
+  const customViews: CardView[] = useMemo(() => {
+    return custom
+      .map((spec) => scores[spec.ticker])
+      .filter((s): s is ScoreResult => !!s && s !== "loading" && s !== "error")
+      .map((s) => {
+        const ov = overrides[s.ticker] ?? {};
+        const o = {
+          ticker: s.ticker,
+          company: s.company,
+          product: s.product,
+          keyword: s.keyword,
+          category: s.category,
+          status: (ov.status ?? "watching") as Status,
+          conviction: (ov.conviction ?? "medium") as Conviction,
+          notes: ov.notes ?? "",
+          earningsDate: s.earningsDate,
+          earningsTiming: s.earningsTiming,
+          earningsTentative: s.earningsTentative,
+          estimateEps: s.estimateEps,
+          epsHistory: s.epsHistory,
+          daysToEarnings: s.daysToEarnings,
+        };
+        return {
+          o,
+          points: s.trend.points,
+          source: s.trend.source,
+          latest: s.latest,
+          momentum: s.momentum,
+          momentumPct: s.momentumPct,
+          beat: s.beat,
+          signal: s.signal,
+          isCustom: true,
+        };
+      });
+  }, [custom, scores, overrides]);
 
-  // Historical base rates from real EPS history across the tracked universe.
-  // This is a base-rate panel, not a predictive backtest — a true backtest
-  // needs the signal logged at each past entry, which the journal builds going
-  // forward. The momentum split is a cross-sectional check: do names that are
-  // accelerating *now* also tend to have beaten historically?
+  const allViews = useMemo(
+    () => [...customViews, ...seededViews],
+    [customViews, seededViews],
+  );
+
+  const rows = useMemo(() => {
+    let f = allViews.filter((v) => !hideStatus.has(v.o.status));
+    if (windowWeeks != null)
+      f = f.filter(
+        (v) => v.o.daysToEarnings != null && v.o.daysToEarnings <= windowWeeks * 7,
+      );
+    const s = [...f];
+    if (sort === "signal") s.sort((a, b) => b.signal.score - a.signal.score);
+    if (sort === "momentum") s.sort((a, b) => b.momentum - a.momentum);
+    if (sort === "earnings")
+      s.sort(
+        (a, b) => (a.o.daysToEarnings ?? 1e9) - (b.o.daysToEarnings ?? 1e9),
+      );
+    if (sort === "interest") s.sort((a, b) => b.latest - a.latest);
+    return s;
+  }, [allViews, sort, hideStatus, windowWeeks]);
+
+  const liveCount = allViews.filter((v) => v.source === "live").length;
+  const sampleCount = allViews.length - liveCount;
+  const editCount = Object.keys(overrides).length;
+
+  // Historical base rates from real EPS history across all tracked names.
   const base = useMemo(() => {
-    let quarters = 0;
-    let beats = 0;
-    let surpriseSum = 0;
-    let accelBeats = 0;
-    let accelQ = 0;
-    let flatBeats = 0;
-    let flatQ = 0;
-    for (const v of views) {
+    let quarters = 0,
+      beats = 0,
+      surpriseSum = 0,
+      accelBeats = 0,
+      accelQ = 0,
+      flatBeats = 0,
+      flatQ = 0;
+    for (const v of allViews) {
       const h = v.o.epsHistory;
       if (!h || h.length === 0) continue;
-      const accelerating = v.momentumPct > 0;
+      const accel = v.momentumPct > 0;
       for (const q of h) {
         const beat = q.actual >= q.estimate;
         quarters++;
         if (beat) beats++;
         if (q.estimate !== 0)
           surpriseSum += (q.actual - q.estimate) / Math.abs(q.estimate);
-        if (accelerating) {
+        if (accel) {
           accelQ++;
           if (beat) accelBeats++;
         } else {
@@ -262,7 +238,7 @@ export default function Dashboard() {
       accel: accelQ ? accelBeats / accelQ : null,
       flat: flatQ ? flatBeats / flatQ : null,
     };
-  }, [views]);
+  }, [allViews]);
 
   function toggleStatus(s: Status) {
     setHideStatus((prev) => {
@@ -273,7 +249,12 @@ export default function Dashboard() {
     });
   }
 
-  const editCount = Object.keys(overrides).length;
+  function submitCustom(e: FormEvent) {
+    e.preventDefault();
+    if (!form.ticker.trim() || !form.keyword.trim()) return;
+    add({ ticker: form.ticker, keyword: form.keyword, name: form.name });
+    setForm({ ticker: "", keyword: "", name: "" });
+  }
 
   return (
     <section className="panel">
@@ -283,15 +264,8 @@ export default function Dashboard() {
           {feed?.earningsSource && (
             <span
               className={`feed-badge ${feed.earningsSource === "finnhub" ? "live" : "seed"}`}
-              title={
-                feed.earningsSource === "finnhub"
-                  ? "Earnings pulled live from Finnhub"
-                  : "Earnings from seeded data (set FINNHUB_API_KEY for live)"
-              }
             >
-              {feed.earningsSource === "finnhub"
-                ? "earnings: live"
-                : "earnings: seed"}
+              {feed.earningsSource === "finnhub" ? "earnings: live" : "earnings: seed"}
             </span>
           )}
         </div>
@@ -301,9 +275,7 @@ export default function Dashboard() {
             <select
               value={windowWeeks ?? ""}
               onChange={(e) =>
-                setWindowWeeks(
-                  e.target.value === "" ? null : Number(e.target.value),
-                )
+                setWindowWeeks(e.target.value === "" ? null : Number(e.target.value))
               }
             >
               {WINDOWS.map((w) => (
@@ -315,10 +287,7 @@ export default function Dashboard() {
           </label>
           <label>
             Sort
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-            >
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
               <option value="signal">Signal score</option>
               <option value="momentum">Trend momentum</option>
               <option value="earnings">Days to earnings</option>
@@ -339,13 +308,48 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {error && <p className="error">⚠ {error}</p>}
+      {/* Data-provenance banner: how much of the signal is real vs placeholder. */}
+      {allViews.length > 0 && (
+        <div className={`provenance-banner ${sampleCount > 0 ? "warn" : "ok"}`}>
+          <span className="live-dot" />
+          <strong>{liveCount}</strong> of {allViews.length} on live Google Trends
+          {sampleCount > 0 && (
+            <>
+              {" · "}
+              <strong>{sampleCount}</strong> on placeholder data (dimmed) — their
+              Signal isn&apos;t trustworthy yet
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Add a custom stock. */}
+      <form className="add-stock" onSubmit={submitCustom}>
+        <input
+          placeholder="Ticker (e.g. NKE)"
+          value={form.ticker}
+          onChange={(e) => setForm({ ...form, ticker: e.target.value })}
+        />
+        <input
+          placeholder="Search keyword (e.g. nike)"
+          value={form.keyword}
+          onChange={(e) => setForm({ ...form, keyword: e.target.value })}
+        />
+        <input
+          placeholder="Name (optional)"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+        <button type="submit">Score it</button>
+      </form>
 
       {base && (
-        <div className="baserates" title="Historical base rates from real EPS history of tracked names">
+        <div className="baserates" title="Historical base rates from real EPS history">
           <span>
-            <strong>{base.beats}/{base.quarters}</strong> tracked prints beat
-            consensus ({Math.round(base.beatRate * 100)}%)
+            <strong>
+              {base.beats}/{base.quarters}
+            </strong>{" "}
+            tracked prints beat ({Math.round(base.beatRate * 100)}%)
           </span>
           <span>
             avg surprise{" "}
@@ -353,143 +357,45 @@ export default function Dashboard() {
           </span>
           {base.accel != null && base.flat != null && (
             <span>
-              accelerating names beat{" "}
-              <strong>{Math.round(base.accel * 100)}%</strong> vs{" "}
-              <strong>{Math.round(base.flat * 100)}%</strong> for flat/fading
+              accelerating names beat <strong>{Math.round(base.accel * 100)}%</strong>{" "}
+              vs <strong>{Math.round(base.flat * 100)}%</strong> for flat/fading
             </span>
           )}
         </div>
       )}
 
+      {error && <p className="error">⚠ {error}</p>}
+
+      {/* Loading / error states for custom tickers. */}
+      {custom.some((c) => scores[c.ticker] === "loading") && (
+        <p className="custom-status">Scoring custom tickers…</p>
+      )}
+      {custom
+        .filter((c) => scores[c.ticker] === "error")
+        .map((c) => (
+          <p key={c.ticker} className="custom-status err">
+            Couldn&apos;t score {c.ticker} — check the ticker/keyword.{" "}
+            <button onClick={() => remove(c.ticker)}>remove</button>
+          </p>
+        ))}
+
       <div className="cards">
-        {rows.map((v) => {
-          const o = v.o;
-          const soon = o.daysToEarnings <= 30;
-          return (
-            <article key={o.ticker} className="card">
-              <div className="card-signal">
-                <span
-                  className="signal-score"
-                  title={`Acceleration ${v.signal.acceleration} · Interest ${v.signal.interest} · Conversion ${v.signal.conversion} (beat rate ${Math.round(
-                    v.beat * 100,
-                  )}%)`}
-                >
-                  {v.signal.score}
-                </span>
-                <span className="signal-label">signal</span>
-              </div>
-
-              <div className="card-main">
-                <div className="ident">
-                  <span className="ticker">{o.ticker}</span>
-                  <span className="company">{o.company}</span>
-                  <button
-                    className={`status ${o.status}`}
-                    title="Click to change status"
-                    onClick={() =>
-                      setOverride(o.ticker, {
-                        status: nextIn(STATUS_CYCLE, o.status),
-                      })
-                    }
-                  >
-                    {STATUS_LABEL[o.status]}
-                  </button>
-                </div>
-                <div className="product">
-                  <span className="dot-trend" /> {o.product}
-                  <span className="cat">{o.category}</span>
-                </div>
-
-                <EditableNote
-                  value={o.notes}
-                  onSave={(notes) => setOverride(o.ticker, { notes })}
-                />
-
-                {o.epsHistory && o.epsHistory.length > 0 && (
-                  <div className="track">
-                    <span className="track-label">EPS vs est</span>
-                    {o.epsHistory.map((q) => {
-                      const beat = q.actual >= q.estimate;
-                      return (
-                        <span
-                          key={q.label}
-                          className={`pill ${beat ? "beat" : "miss"}`}
-                          title={`${q.label}: actual ${q.actual} vs est ${q.estimate}`}
-                        >
-                          {q.label.split(" ")[0]} {beat ? "▲" : "▼"}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="card-trend">
-                <Sparkline points={v.points} />
-                <div className="trend-stats">
-                  <span
-                    className={`mom ${v.momentum >= 0 ? "pos" : "neg"}`}
-                    title="Recent 3-mo avg vs. prior 3-mo avg"
-                  >
-                    {signedPct(v.momentumPct)} momentum
-                  </span>
-                  <span className="interest">
-                    interest {v.latest}/100
-                    <span className={`src ${v.source}`}>
-                      {v.source === "live" ? " · live" : " · sample"}
-                    </span>
-                  </span>
-                  <TikTokScore keyword={o.keyword} />
-                </div>
-              </div>
-
-              <div className="card-earn">
-                <span className={`countdown ${soon ? "soon" : ""}`}>
-                  {o.daysToEarnings}d
-                </span>
-                <span className="earn-label">
-                  to earnings
-                  <br />
-                  {fmtDate(o.earningsDate)}
-                  {o.earningsTiming ? ` ${o.earningsTiming}` : ""}
-                  {o.earningsTentative ? "*" : ""}
-                  {typeof o.estimateEps === "number" && (
-                    <>
-                      <br />
-                      est EPS ${o.estimateEps.toFixed(2)}
-                    </>
-                  )}
-                </span>
-                {o.options && (
-                  <span
-                    className="exp-move"
-                    title={`Options-implied move to the next expiration · ATM IV ${Math.round(
-                      o.options.iv * 100,
-                    )}% · as of ${o.options.asOf}`}
-                  >
-                    ±{Math.round(o.options.expectedMovePct * 100)}% priced in
-                  </span>
-                )}
-                <button
-                  className={`conv ${o.conviction}`}
-                  title="Click to change conviction"
-                  onClick={() =>
-                    setOverride(o.ticker, {
-                      conviction: nextIn(CONV_CYCLE, o.conviction),
-                    })
-                  }
-                >
-                  {o.conviction}
-                </button>
-              </div>
-            </article>
-          );
-        })}
+        {rows.map((v) => (
+          <Card
+            key={v.o.ticker}
+            view={v}
+            onStatus={(s) => setOverride(v.o.ticker, { status: s })}
+            onConviction={(c) => setOverride(v.o.ticker, { conviction: c })}
+            onNote={(n) => setOverride(v.o.ticker, { notes: n })}
+            onRemove={v.isCustom ? () => remove(v.o.ticker) : undefined}
+          />
+        ))}
       </div>
 
       <div className="panel-foot">
         <span>
-          Edits (status, conviction, notes) save to this browser.
+          Edits (status, conviction, notes) and custom stocks save to this
+          browser.
           {editCount > 0 && (
             <button className="reset" onClick={clearAll}>
               reset {editCount} edited
@@ -498,13 +404,35 @@ export default function Dashboard() {
         </span>
       </div>
 
-      <p className="provenance">
-        <strong>Signal</strong> = 50% search acceleration + 20% interest level +
-        30% earnings beat-rate (hover the number for the breakdown). Earnings,
-        EPS estimates and beat/miss history are real market data; trend lines use
-        live Google Trends where available (<code>live</code>) and fall back to a
-        seeded <code>sample</code> when Google rate-limits.
-      </p>
+      <details className="glossary">
+        <summary>What the numbers mean</summary>
+        <dl>
+          <dt>Signal (0–100)</dt>
+          <dd>
+            How attractive the setup is: 50% search acceleration + 20% interest
+            level + 30% earnings beat-rate. Strong ≥ 65, Mixed ≥ 45.
+          </dd>
+          <dt>Momentum</dt>
+          <dd>
+            Search acceleration — recent 3 months vs. the prior 3. Positive means
+            the trend is bending up (you may be early).
+          </dd>
+          <dt>Interest</dt>
+          <dd>Current search interest, 0–100 (Google-Trends style).</dd>
+          <dt>live vs sample</dt>
+          <dd>
+            <strong>live</strong> = real Google Trends. <strong>sample</strong> =
+            placeholder shape shown when Google rate-limits; don&apos;t trade it.
+          </dd>
+          <dt>EPS vs est</dt>
+          <dd>Did the company beat (▲) or miss (▼) earnings estimates each quarter.</dd>
+          <dt>±N% priced in</dt>
+          <dd>
+            The move options are pricing for the print (ATM straddle). High = a lot
+            already expected; beware IV crush.
+          </dd>
+        </dl>
+      </details>
     </section>
   );
 }
