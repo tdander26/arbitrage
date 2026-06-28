@@ -53,6 +53,12 @@ export type Opportunity = {
   notes: string;
   /** Seeded ~12-month trend used when no live feed is available. */
   sampleTrend: TrendPoint[];
+  /**
+   * Options snapshot around the next print: expected move (ATM straddle as a
+   * fraction of spot) and ATM implied vol. A labeled point-in-time snapshot;
+   * refreshed from a live options source rather than recomputed per request.
+   */
+  options?: { expectedMovePct: number; iv: number; asOf: string };
 };
 
 // Derived, request-time fields layered on top of an Opportunity.

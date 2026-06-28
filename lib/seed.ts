@@ -61,6 +61,7 @@ export const SEED: Opportunity[] = [
     notes:
       "Summer search seasonality plus sustained TikTok 'electrolyte' content. Watch for the run-up to hold into the print.",
     sampleTrend: monthly([41, 44, 43, 48, 55, 60, 66, 71, 78, 84, 88, 92]),
+    options: { expectedMovePct: 0.205, iv: 0.664, asOf: "2026-06-26" },
   },
   {
     ticker: "CELH",
@@ -83,6 +84,7 @@ export const SEED: Opportunity[] = [
     notes:
       "Fitness-creator driven. Search cooled vs. 2024 peak — looking for re-acceleration, not just high absolute level.",
     sampleTrend: monthly([88, 82, 79, 76, 72, 70, 71, 69, 73, 77, 80, 83]),
+    options: { expectedMovePct: 0.18, iv: 0.684, asOf: "2026-06-26" },
   },
   {
     ticker: "ELF",
@@ -105,6 +107,7 @@ export const SEED: Opportunity[] = [
     notes:
       "Consistent GRWM/TikTok virality on specific SKUs (primer, lip oil). Strong estimate-beat history.",
     sampleTrend: monthly([52, 55, 58, 57, 61, 64, 63, 68, 72, 75, 79, 81]),
+    options: { expectedMovePct: 0.208, iv: 0.786, asOf: "2026-06-26" },
   },
   {
     ticker: "CROX",
@@ -127,6 +130,7 @@ export const SEED: Opportunity[] = [
     notes:
       "Jibbitz/charm trends are spiky. HEYDUDE remains the drag — social on core Crocs not enough alone.",
     sampleTrend: monthly([70, 68, 66, 64, 65, 63, 62, 61, 60, 62, 61, 59]),
+    options: { expectedMovePct: 0.164, iv: 0.532, asOf: "2026-06-26" },
   },
   {
     ticker: "WING",
@@ -149,6 +153,7 @@ export const SEED: Opportunity[] = [
     notes:
       "Viral menu/flavor moments drive same-store traffic. Track search around new flavor drops.",
     sampleTrend: monthly([60, 62, 61, 64, 66, 65, 68, 70, 69, 72, 74, 73]),
+    options: { expectedMovePct: 0.233, iv: 0.767, asOf: "2026-06-26" },
   },
   {
     ticker: "DECK",
@@ -171,6 +176,7 @@ export const SEED: Opportunity[] = [
     notes:
       "Hoka still compounding in search; running-shoe adoption broadening beyond enthusiasts.",
     sampleTrend: monthly([55, 58, 60, 63, 66, 68, 71, 73, 76, 78, 81, 84]),
+    options: { expectedMovePct: 0.141, iv: 0.533, asOf: "2026-06-26" },
   },
 
   // --- Expanded universe -------------------------------------------------
