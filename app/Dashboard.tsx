@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { EnrichedOpportunity, Status } from "@/lib/types";
+import type { EnrichedOpportunity, Status, TrendPoint } from "@/lib/types";
+import { momentumOf } from "@/lib/enrich";
+import { beatRate, computeSignal } from "@/lib/signal";
 import Sparkline from "./Sparkline";
 
 type Feed = {
@@ -11,7 +13,9 @@ type Feed = {
   opportunities: EnrichedOpportunity[];
 };
 
-type SortKey = "momentum" | "earnings" | "interest";
+type TrendState = { points: TrendPoint[]; source: "live" | "sample" };
+
+type SortKey = "signal" | "momentum" | "earnings" | "interest";
 
 const STATUS_LABEL: Record<Status, string> = {
   watching: "Watching",
@@ -80,16 +84,39 @@ function TikTokScore({ keyword }: { keyword: string }) {
 
 export default function Dashboard() {
   const [feed, setFeed] = useState<Feed | null>(null);
+  const [trends, setTrends] = useState<Record<string, TrendState>>({});
   const [error, setError] = useState<string | null>(null);
-  const [sort, setSort] = useState<SortKey>("momentum");
+  const [sort, setSort] = useState<SortKey>("signal");
   const [hideStatus, setHideStatus] = useState<Set<Status>>(new Set());
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/opportunities", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setFeed(await res.json());
+      const data: Feed = await res.json();
+      setFeed(data);
       setError(null);
+
+      // Upgrade each card's trend to live Google Trends in the background.
+      // Page renders immediately on seed data; cards update as these resolve.
+      data.opportunities.forEach(async (o) => {
+        try {
+          const r = await fetch(
+            `/api/trends?keyword=${encodeURIComponent(o.keyword)}`,
+            { cache: "no-store" },
+          );
+          if (!r.ok) return;
+          const t = await r.json();
+          if (Array.isArray(t.points) && t.points.length > 1) {
+            setTrends((prev) => ({
+              ...prev,
+              [o.keyword]: { points: t.points, source: t.source },
+            }));
+          }
+        } catch {
+          /* keep seed sample */
+        }
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
@@ -99,16 +126,31 @@ export default function Dashboard() {
     load();
   }, [load]);
 
-  const rows = useMemo(() => {
+  // Derive each card's current trend (live if loaded, else seed) plus the
+  // recomputed momentum/interest and composite signal score.
+  const views = useMemo(() => {
     if (!feed) return [];
-    const filtered = feed.opportunities.filter((o) => !hideStatus.has(o.status));
+    return feed.opportunities.map((o) => {
+      const t = trends[o.keyword];
+      const points = t?.points ?? o.sampleTrend;
+      const source = t?.source ?? "sample";
+      const { latest, momentum, momentumPct } = momentumOf(points);
+      const beat = beatRate(o.epsHistory);
+      const signal = computeSignal({ momentumPct, latest, beat });
+      return { o, points, source, latest, momentum, momentumPct, beat, signal };
+    });
+  }, [feed, trends]);
+
+  const rows = useMemo(() => {
+    const filtered = views.filter((v) => !hideStatus.has(v.o.status));
     const sorted = [...filtered];
+    if (sort === "signal") sorted.sort((a, b) => b.signal.score - a.signal.score);
     if (sort === "momentum") sorted.sort((a, b) => b.momentum - a.momentum);
     if (sort === "earnings")
-      sorted.sort((a, b) => a.daysToEarnings - b.daysToEarnings);
+      sorted.sort((a, b) => a.o.daysToEarnings - b.o.daysToEarnings);
     if (sort === "interest") sorted.sort((a, b) => b.latest - a.latest);
     return sorted;
-  }, [feed, sort, hideStatus]);
+  }, [views, sort, hideStatus]);
 
   function toggleStatus(s: Status) {
     setHideStatus((prev) => {
@@ -146,6 +188,7 @@ export default function Dashboard() {
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
             >
+              <option value="signal">Signal score</option>
               <option value="momentum">Trend momentum</option>
               <option value="earnings">Days to earnings</option>
               <option value="interest">Current interest</option>
@@ -168,10 +211,23 @@ export default function Dashboard() {
       {error && <p className="error">⚠ {error}</p>}
 
       <div className="cards">
-        {rows.map((o) => {
+        {rows.map((v) => {
+          const o = v.o;
           const soon = o.daysToEarnings <= 30;
           return (
             <article key={o.ticker} className="card">
+              <div className="card-signal">
+                <span
+                  className="signal-score"
+                  title={`Acceleration ${v.signal.acceleration} · Interest ${v.signal.interest} · Conversion ${v.signal.conversion} (beat rate ${Math.round(
+                    v.beat * 100,
+                  )}%)`}
+                >
+                  {v.signal.score}
+                </span>
+                <span className="signal-label">signal</span>
+              </div>
+
               <div className="card-main">
                 <div className="ident">
                   <span className="ticker">{o.ticker}</span>
@@ -206,15 +262,20 @@ export default function Dashboard() {
               </div>
 
               <div className="card-trend">
-                <Sparkline points={o.sampleTrend} />
+                <Sparkline points={v.points} />
                 <div className="trend-stats">
                   <span
-                    className={`mom ${o.momentum >= 0 ? "pos" : "neg"}`}
+                    className={`mom ${v.momentum >= 0 ? "pos" : "neg"}`}
                     title="Recent 3-mo avg vs. prior 3-mo avg"
                   >
-                    {signedPct(o.momentumPct)} momentum
+                    {signedPct(v.momentumPct)} momentum
                   </span>
-                  <span className="interest">interest {o.latest}/100</span>
+                  <span className="interest">
+                    interest {v.latest}/100
+                    <span className={`src ${v.source}`}>
+                      {v.source === "live" ? " · live" : " · sample"}
+                    </span>
+                  </span>
                   <TikTokScore keyword={o.keyword} />
                 </div>
               </div>
@@ -244,12 +305,11 @@ export default function Dashboard() {
       </div>
 
       <p className="provenance">
-        Earnings dates, EPS estimates and beat/miss history are real (verified
-        market data); <code>*</code> marks a tentative date. Trend values are
-        seeded samples — live Google Trends is at{" "}
-        <code>/api/trends?keyword=…</code>. Set <code>FINNHUB_API_KEY</code> to
-        auto-refresh earnings and <code>APIFY_TOKEN</code> for TikTok volume —
-        see the README.
+        <strong>Signal</strong> = 50% search acceleration + 20% interest level +
+        30% earnings beat-rate (hover the number for the breakdown). Earnings,
+        EPS estimates and beat/miss history are real market data; trend lines use
+        live Google Trends where available (<code>live</code>) and fall back to a
+        seeded <code>sample</code> when Google rate-limits.
       </p>
     </section>
   );
