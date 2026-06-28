@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Arbitrage",
-  description: "Arbitrage — opportunity tracking dashboard",
+  title: "Social Arbitrage",
+  description:
+    "Track consumer social/search trends in the run-up to earnings dates.",
 };
 
 export default function RootLayout({
