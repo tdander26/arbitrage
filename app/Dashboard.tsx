@@ -1,9 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { EnrichedOpportunity, Status, TrendPoint } from "@/lib/types";
+import type {
+  Conviction,
+  EnrichedOpportunity,
+  Status,
+  TrendPoint,
+} from "@/lib/types";
 import { momentumOf } from "@/lib/enrich";
 import { beatRate, computeSignal } from "@/lib/signal";
+import { useOverrides } from "./useOverrides";
 import Sparkline from "./Sparkline";
 
 type Feed = {
@@ -22,6 +28,14 @@ const STATUS_LABEL: Record<Status, string> = {
   positioned: "Positioned",
   passed: "Passed",
 };
+
+const STATUS_CYCLE: Status[] = ["watching", "positioned", "passed"];
+const CONV_CYCLE: Conviction[] = ["low", "medium", "high"];
+
+function nextIn<T>(cycle: T[], current: T): T {
+  const i = cycle.indexOf(current);
+  return cycle[(i + 1) % cycle.length];
+}
 
 function fmtDate(iso: string): string {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
@@ -82,12 +96,60 @@ function TikTokScore({ keyword }: { keyword: string }) {
   );
 }
 
+// Inline-editable note, saved to localStorage on blur.
+function EditableNote({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (editing) {
+    return (
+      <textarea
+        className="note-edit"
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          setEditing(false);
+          if (draft !== value) onSave(draft);
+        }}
+      />
+    );
+  }
+  return (
+    <p
+      className="notes editable"
+      title="Click to edit"
+      onClick={() => {
+        setDraft(value);
+        setEditing(true);
+      }}
+    >
+      {value || <span className="note-empty">+ add a note</span>}
+    </p>
+  );
+}
+
+const WINDOWS: { label: string; weeks: number | null }[] = [
+  { label: "Any", weeks: null },
+  { label: "≤ 2w", weeks: 2 },
+  { label: "≤ 4w", weeks: 4 },
+  { label: "≤ 8w", weeks: 8 },
+];
+
 export default function Dashboard() {
   const [feed, setFeed] = useState<Feed | null>(null);
   const [trends, setTrends] = useState<Record<string, TrendState>>({});
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("signal");
   const [hideStatus, setHideStatus] = useState<Set<Status>>(new Set());
+  const [windowWeeks, setWindowWeeks] = useState<number | null>(null);
+  const { overrides, setOverride, clearAll } = useOverrides();
 
   const load = useCallback(async () => {
     try {
@@ -98,7 +160,6 @@ export default function Dashboard() {
       setError(null);
 
       // Upgrade each card's trend to live Google Trends in the background.
-      // Page renders immediately on seed data; cards update as these resolve.
       data.opportunities.forEach(async (o) => {
         try {
           const r = await fetch(
@@ -126,11 +187,17 @@ export default function Dashboard() {
     load();
   }, [load]);
 
-  // Derive each card's current trend (live if loaded, else seed) plus the
-  // recomputed momentum/interest and composite signal score.
+  // Apply user overrides, live trends, momentum and the composite signal.
   const views = useMemo(() => {
     if (!feed) return [];
-    return feed.opportunities.map((o) => {
+    return feed.opportunities.map((base) => {
+      const ov = overrides[base.ticker] ?? {};
+      const o: EnrichedOpportunity = {
+        ...base,
+        status: ov.status ?? base.status,
+        conviction: ov.conviction ?? base.conviction,
+        notes: ov.notes ?? base.notes,
+      };
       const t = trends[o.keyword];
       const points = t?.points ?? o.sampleTrend;
       const source = t?.source ?? "sample";
@@ -139,10 +206,12 @@ export default function Dashboard() {
       const signal = computeSignal({ momentumPct, latest, beat });
       return { o, points, source, latest, momentum, momentumPct, beat, signal };
     });
-  }, [feed, trends]);
+  }, [feed, trends, overrides]);
 
   const rows = useMemo(() => {
-    const filtered = views.filter((v) => !hideStatus.has(v.o.status));
+    let filtered = views.filter((v) => !hideStatus.has(v.o.status));
+    if (windowWeeks != null)
+      filtered = filtered.filter((v) => v.o.daysToEarnings <= windowWeeks * 7);
     const sorted = [...filtered];
     if (sort === "signal") sorted.sort((a, b) => b.signal.score - a.signal.score);
     if (sort === "momentum") sorted.sort((a, b) => b.momentum - a.momentum);
@@ -150,7 +219,7 @@ export default function Dashboard() {
       sorted.sort((a, b) => a.o.daysToEarnings - b.o.daysToEarnings);
     if (sort === "interest") sorted.sort((a, b) => b.latest - a.latest);
     return sorted;
-  }, [views, sort, hideStatus]);
+  }, [views, sort, hideStatus, windowWeeks]);
 
   function toggleStatus(s: Status) {
     setHideStatus((prev) => {
@@ -160,6 +229,8 @@ export default function Dashboard() {
       return next;
     });
   }
+
+  const editCount = Object.keys(overrides).length;
 
   return (
     <section className="panel">
@@ -182,6 +253,23 @@ export default function Dashboard() {
           )}
         </div>
         <div className="controls">
+          <label>
+            Earnings
+            <select
+              value={windowWeeks ?? ""}
+              onChange={(e) =>
+                setWindowWeeks(
+                  e.target.value === "" ? null : Number(e.target.value),
+                )
+              }
+            >
+              {WINDOWS.map((w) => (
+                <option key={w.label} value={w.weeks ?? ""}>
+                  {w.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Sort
             <select
@@ -232,15 +320,27 @@ export default function Dashboard() {
                 <div className="ident">
                   <span className="ticker">{o.ticker}</span>
                   <span className="company">{o.company}</span>
-                  <span className={`status ${o.status}`}>
+                  <button
+                    className={`status ${o.status}`}
+                    title="Click to change status"
+                    onClick={() =>
+                      setOverride(o.ticker, {
+                        status: nextIn(STATUS_CYCLE, o.status),
+                      })
+                    }
+                  >
                     {STATUS_LABEL[o.status]}
-                  </span>
+                  </button>
                 </div>
                 <div className="product">
                   <span className="dot-trend" /> {o.product}
                   <span className="cat">{o.category}</span>
                 </div>
-                <p className="notes">{o.notes}</p>
+
+                <EditableNote
+                  value={o.notes}
+                  onSave={(notes) => setOverride(o.ticker, { notes })}
+                />
 
                 {o.epsHistory && o.epsHistory.length > 0 && (
                   <div className="track">
@@ -297,11 +397,32 @@ export default function Dashboard() {
                     </>
                   )}
                 </span>
-                <span className={`conv ${o.conviction}`}>{o.conviction}</span>
+                <button
+                  className={`conv ${o.conviction}`}
+                  title="Click to change conviction"
+                  onClick={() =>
+                    setOverride(o.ticker, {
+                      conviction: nextIn(CONV_CYCLE, o.conviction),
+                    })
+                  }
+                >
+                  {o.conviction}
+                </button>
               </div>
             </article>
           );
         })}
+      </div>
+
+      <div className="panel-foot">
+        <span>
+          Edits (status, conviction, notes) save to this browser.
+          {editCount > 0 && (
+            <button className="reset" onClick={clearAll}>
+              reset {editCount} edited
+            </button>
+          )}
+        </span>
       </div>
 
       <p className="provenance">
