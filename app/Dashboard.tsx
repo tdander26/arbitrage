@@ -7,6 +7,7 @@ import Sparkline from "./Sparkline";
 type Feed = {
   asOf: string;
   count: number;
+  earningsSource?: "finnhub" | "seed";
   opportunities: EnrichedOpportunity[];
 };
 
@@ -123,6 +124,20 @@ export default function Dashboard() {
       <header className="panel-head">
         <div>
           <strong>{rows.length}</strong> opportunities
+          {feed?.earningsSource && (
+            <span
+              className={`feed-badge ${feed.earningsSource === "finnhub" ? "live" : "seed"}`}
+              title={
+                feed.earningsSource === "finnhub"
+                  ? "Earnings pulled live from Finnhub"
+                  : "Earnings from seeded data (set FINNHUB_API_KEY for live)"
+              }
+            >
+              {feed.earningsSource === "finnhub"
+                ? "earnings: live"
+                : "earnings: seed"}
+            </span>
+          )}
         </div>
         <div className="controls">
           <label>
