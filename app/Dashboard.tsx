@@ -123,6 +123,24 @@ export default function Dashboard() {
                   <span className="cat">{o.category}</span>
                 </div>
                 <p className="notes">{o.notes}</p>
+
+                {o.epsHistory && o.epsHistory.length > 0 && (
+                  <div className="track">
+                    <span className="track-label">EPS vs est</span>
+                    {o.epsHistory.map((q) => {
+                      const beat = q.actual >= q.estimate;
+                      return (
+                        <span
+                          key={q.label}
+                          className={`pill ${beat ? "beat" : "miss"}`}
+                          title={`${q.label}: actual ${q.actual} vs est ${q.estimate}`}
+                        >
+                          {q.label.split(" ")[0]} {beat ? "▲" : "▼"}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="card-trend">
@@ -146,6 +164,14 @@ export default function Dashboard() {
                   to earnings
                   <br />
                   {fmtDate(o.earningsDate)}
+                  {o.earningsTiming ? ` ${o.earningsTiming}` : ""}
+                  {o.earningsTentative ? "*" : ""}
+                  {typeof o.estimateEps === "number" && (
+                    <>
+                      <br />
+                      est EPS ${o.estimateEps.toFixed(2)}
+                    </>
+                  )}
                 </span>
                 <span className={`conv ${o.conviction}`}>{o.conviction}</span>
               </div>
@@ -155,9 +181,12 @@ export default function Dashboard() {
       </div>
 
       <p className="provenance">
-        Trend values shown are seeded samples. Live Google Trends is available at{" "}
-        <code>/api/trends?keyword=…</code>; connect an earnings API and a social
-        provider (Apify) to make every column live — see the README.
+        Earnings dates, EPS estimates and beat/miss history are real (verified
+        market data); <code>*</code> marks a tentative date. Trend values are
+        seeded samples — live Google Trends is at{" "}
+        <code>/api/trends?keyword=…</code>. Set <code>FINNHUB_API_KEY</code> to
+        auto-refresh earnings and <code>APIFY_TOKEN</code> for TikTok volume —
+        see the README.
       </p>
     </section>
   );
