@@ -22,6 +22,14 @@ export type TrendSeries = {
 export type Conviction = "low" | "medium" | "high";
 export type Status = "watching" | "positioned" | "passed";
 
+/** One reported quarter, for the EPS beat/miss track record. */
+export type EpsQuarter = {
+  /** Display label, e.g. "Q1 '26". */
+  label: string;
+  estimate: number;
+  actual: number;
+};
+
 export type Opportunity = {
   ticker: string;
   company: string;
@@ -32,6 +40,14 @@ export type Opportunity = {
   category: string;
   /** Next earnings date (ISO). The deadline to have a view by. */
   earningsDate: string;
+  /** Report timing on that date. */
+  earningsTiming?: "am" | "pm";
+  /** True when the date is estimated/unconfirmed by the company. */
+  earningsTentative?: boolean;
+  /** Consensus EPS estimate for the upcoming report. */
+  estimateEps?: number;
+  /** Trailing reported quarters (oldest → newest) for beat/miss history. */
+  epsHistory?: EpsQuarter[];
   conviction: Conviction;
   status: Status;
   notes: string;
