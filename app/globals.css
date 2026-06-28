@@ -278,6 +278,34 @@ body {
 .interest {
   color: var(--muted);
 }
+.tiktok {
+  font-size: 0.74rem;
+  font-family: ui-monospace, monospace;
+  margin-top: 0.15rem;
+}
+.tiktok.btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 5px;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
+.tiktok.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tiktok.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.tiktok.done {
+  color: var(--accent);
+}
+.tiktok.off {
+  color: var(--muted);
+  opacity: 0.6;
+}
 
 .card-earn {
   display: flex;

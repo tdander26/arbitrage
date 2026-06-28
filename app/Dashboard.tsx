@@ -30,6 +30,53 @@ function signedPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(0)}%`;
 }
 
+// On-demand TikTok activity score. Calls Apify (via /api/social) only when the
+// user clicks, so we don't burn Apify credits on every page load.
+function TikTokScore({ keyword }: { keyword: string }) {
+  const [state, setState] = useState<
+    "idle" | "loading" | "done" | "unavailable"
+  >("idle");
+  const [score, setScore] = useState<number | null>(null);
+
+  async function check() {
+    setState("loading");
+    try {
+      const res = await fetch(
+        `/api/social?keyword=${encodeURIComponent(keyword)}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json();
+      if (!res.ok || data.score == null) {
+        setState("unavailable");
+        return;
+      }
+      setScore(data.score);
+      setState("done");
+    } catch {
+      setState("unavailable");
+    }
+  }
+
+  if (state === "done")
+    return <span className="tiktok done">TikTok {score}/100</span>;
+  if (state === "unavailable")
+    return (
+      <span className="tiktok off" title="Set APIFY_TOKEN to enable">
+        TikTok n/a
+      </span>
+    );
+
+  return (
+    <button
+      className="tiktok btn"
+      onClick={check}
+      disabled={state === "loading"}
+    >
+      {state === "loading" ? "checking…" : "check TikTok"}
+    </button>
+  );
+}
+
 export default function Dashboard() {
   const [feed, setFeed] = useState<Feed | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -153,6 +200,7 @@ export default function Dashboard() {
                     {signedPct(o.momentumPct)} momentum
                   </span>
                   <span className="interest">interest {o.latest}/100</span>
+                  <TikTokScore keyword={o.keyword} />
                 </div>
               </div>
 
