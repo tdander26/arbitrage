@@ -66,14 +66,45 @@ function signedPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(0)}%`;
 }
 
+// Monthly hard cap on Apify (TikTok) checks, tracked per browser. Apify's free
+// tier already just stops at $5, but this prevents ever approaching it.
+const APIFY_MONTHLY_CAP = 50;
+
+function apifyUsage(): { month: string; count: number } {
+  const month = new Date().toISOString().slice(0, 7);
+  try {
+    const raw = JSON.parse(localStorage.getItem("arb.apify.v1") || "{}");
+    if (raw.month === month) return raw;
+  } catch {
+    /* ignore */
+  }
+  return { month, count: 0 };
+}
+
+function bumpApifyUsage(): number {
+  const u = apifyUsage();
+  const next = { month: u.month, count: u.count + 1 };
+  try {
+    localStorage.setItem("arb.apify.v1", JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+  return next.count;
+}
+
 // On-demand TikTok activity score (Apify). Only runs on click to save credits.
 function TikTokScore({ keyword }: { keyword: string }) {
   const [state, setState] = useState<
-    "idle" | "loading" | "done" | "unavailable"
+    "idle" | "loading" | "done" | "unavailable" | "capped"
   >("idle");
   const [score, setScore] = useState<number | null>(null);
 
   async function check() {
+    if (apifyUsage().count >= APIFY_MONTHLY_CAP) {
+      setState("capped");
+      return;
+    }
+    bumpApifyUsage();
     setState("loading");
     try {
       const res = await fetch(
@@ -97,8 +128,19 @@ function TikTokScore({ keyword }: { keyword: string }) {
         TikTok n/a
       </span>
     );
+  if (state === "capped")
+    return (
+      <span className="tiktok off" title={`Monthly cap of ${APIFY_MONTHLY_CAP} TikTok checks reached`}>
+        TikTok cap reached
+      </span>
+    );
   return (
-    <button className="tiktok btn" onClick={check} disabled={state === "loading"}>
+    <button
+      className="tiktok btn"
+      onClick={check}
+      disabled={state === "loading"}
+      title={`${APIFY_MONTHLY_CAP - apifyUsage().count} TikTok checks left this month`}
+    >
       {state === "loading" ? "checking…" : "check TikTok"}
     </button>
   );
