@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: #0b0e14;
+  color: #e6eaf2;
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  @apply bg-panel border border-border rounded-xl;
+}
+
+.btn {
+  @apply px-3 py-1.5 rounded-lg border border-border bg-panel hover:bg-panelHover text-sm transition-colors;
+}
+
+.input {
+  @apply px-3 py-1.5 rounded-lg border border-border bg-bg text-text text-sm outline-none focus:border-accent;
+}
