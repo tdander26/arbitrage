@@ -161,6 +161,47 @@ body {
   padding: 0.3rem 0.5rem;
   font-size: 0.85rem;
 }
+.search {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  min-width: 160px;
+}
+
+.journal {
+  margin: 0.3rem 0 0.1rem;
+  font-size: 0.8rem;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+}
+.journal strong {
+  color: var(--accent);
+}
+.journal .pos {
+  color: var(--pos);
+}
+.journal .neg {
+  color: var(--neg);
+}
+
+.collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  color: var(--fg);
+}
+.collapsible.risk > summary {
+  color: var(--amber);
+}
+.collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+.collapsible[open] > summary {
+  margin-bottom: 0.6rem;
+}
 
 .chips {
   display: flex;
@@ -708,15 +749,60 @@ code {
   font-family: ui-monospace, monospace;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
+  .shell {
+    padding: 1.5rem 1rem 3rem;
+  }
+  .hero h1 {
+    font-size: 2rem;
+  }
+  .panel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .controls {
+    width: 100%;
+  }
+  .search {
+    flex: 1 1 100%;
+  }
+  .controls label {
+    flex: 1 1 auto;
+  }
+  .controls select {
+    flex: 1;
+  }
+
+  /* Stack the card: signal+title on top, then trend and earnings as rows. */
   .card {
     grid-template-columns: 1fr;
-    gap: 0.7rem;
+    gap: 0.6rem;
+    padding: 0.9rem 1rem;
   }
-  .card-trend,
-  .card-earn {
-    align-items: flex-start;
+  .card-signal {
     flex-direction: row;
-    gap: 0.8rem;
+    align-items: baseline;
+    align-self: flex-start;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.25rem 0.6rem;
+  }
+  .signal-score {
+    font-size: 1.25rem;
+  }
+  .card-trend {
+    align-items: flex-start;
+  }
+  .card-earn {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.8rem;
+    text-align: left;
+    min-width: 0;
+  }
+  .baserates,
+  .provenance-banner {
+    font-size: 0.78rem;
   }
 }

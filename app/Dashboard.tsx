@@ -59,6 +59,8 @@ export default function Dashboard() {
   const [sort, setSort] = useState<SortKey>("signal");
   const [hideStatus, setHideStatus] = useState<Set<Status>>(new Set());
   const [windowWeeks, setWindowWeeks] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<string>("");
   const { overrides, setOverride, clearAll } = useOverrides();
   const { custom, add, remove } = useCustom();
   const [scores, setScores] = useState<
@@ -128,6 +130,7 @@ export default function Dashboard() {
         status: ov.status ?? base.status,
         conviction: ov.conviction ?? base.conviction,
         notes: ov.notes ?? base.notes,
+        entry: ov.entry,
       };
       const t = trends[o.keyword];
       const points = t?.points ?? o.sampleTrend;
@@ -155,6 +158,7 @@ export default function Dashboard() {
           status: (ov.status ?? "watching") as Status,
           conviction: (ov.conviction ?? "medium") as Conviction,
           notes: ov.notes ?? "",
+          entry: ov.entry,
           earningsDate: s.earningsDate,
           earningsTiming: s.earningsTiming,
           earningsTentative: s.earningsTentative,
@@ -181,12 +185,27 @@ export default function Dashboard() {
     [customViews, seededViews],
   );
 
+  const categories = useMemo(
+    () => Array.from(new Set(allViews.map((v) => v.o.category))).sort(),
+    [allViews],
+  );
+
   const rows = useMemo(() => {
     let f = allViews.filter((v) => !hideStatus.has(v.o.status));
     if (windowWeeks != null)
       f = f.filter(
         (v) => v.o.daysToEarnings != null && v.o.daysToEarnings <= windowWeeks * 7,
       );
+    if (category) f = f.filter((v) => v.o.category === category);
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      f = f.filter(
+        (v) =>
+          v.o.ticker.toLowerCase().includes(q) ||
+          v.o.company.toLowerCase().includes(q) ||
+          v.o.product.toLowerCase().includes(q),
+      );
+    }
     const s = [...f];
     if (sort === "signal") s.sort((a, b) => b.signal.score - a.signal.score);
     if (sort === "momentum") s.sort((a, b) => b.momentum - a.momentum);
@@ -196,7 +215,24 @@ export default function Dashboard() {
       );
     if (sort === "interest") s.sort((a, b) => b.latest - a.latest);
     return s;
-  }, [allViews, sort, hideStatus, windowWeeks]);
+  }, [allViews, sort, hideStatus, windowWeeks, category, query]);
+
+  // Marking a name Positioned snapshots the current Signal as the entry record.
+  function setStatus(view: CardView, s: Status) {
+    if (s === "positioned" && !overrides[view.o.ticker]?.entry) {
+      setOverride(view.o.ticker, {
+        status: s,
+        entry: {
+          signal: view.signal.score,
+          date: new Date().toISOString().slice(0, 10),
+          interest: view.latest,
+          momentumPct: view.momentumPct,
+        },
+      });
+    } else {
+      setOverride(view.o.ticker, { status: s });
+    }
+  }
 
   const liveCount = allViews.filter((v) => v.source === "live").length;
   const sampleCount = allViews.length - liveCount;
@@ -275,6 +311,24 @@ export default function Dashboard() {
           )}
         </div>
         <div className="controls">
+          <input
+            className="search"
+            type="search"
+            placeholder="Search ticker / product…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <label>
+            Category
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">All</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Earnings
             <select
@@ -390,7 +444,7 @@ export default function Dashboard() {
           <Card
             key={v.o.ticker}
             view={v}
-            onStatus={(s) => setOverride(v.o.ticker, { status: s })}
+            onStatus={(s) => setStatus(v, s)}
             onConviction={(c) => setOverride(v.o.ticker, { conviction: c })}
             onNote={(n) => setOverride(v.o.ticker, { notes: n })}
             onRemove={v.isCustom ? () => remove(v.o.ticker) : undefined}

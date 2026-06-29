@@ -27,6 +27,7 @@ export type CardOpp = {
   epsHistory?: EpsQuarter[];
   options?: { expectedMovePct: number; iv: number; asOf: string };
   daysToEarnings: number | null;
+  entry?: { signal: number; date: string; interest: number; momentumPct: number };
 };
 
 export type CardView = {
@@ -243,6 +244,20 @@ export default function Card({
             </button>
           )}
         </div>
+
+        {o.status === "positioned" && o.entry && (
+          <p className="journal">
+            entered @ signal <strong>{o.entry.signal}</strong> on{" "}
+            {fmtDate(o.entry.date)}
+            {signal.score !== o.entry.signal && (
+              <span className={signal.score >= o.entry.signal ? "pos" : "neg"}>
+                {" "}
+                → now {signal.score} ({signal.score >= o.entry.signal ? "+" : ""}
+                {signal.score - o.entry.signal})
+              </span>
+            )}
+          </p>
+        )}
 
         <p className="verdict">{verdict.line}</p>
         <div className="drivers">
