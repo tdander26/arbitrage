@@ -12,7 +12,10 @@ export type SocialStatus =
   | { status: "done"; score: number }
   | { status: "failed" };
 
-const DEFAULT_ACTOR = "clockworks~tiktok-trends-scraper";
+// The general TikTok scraper returns per-video engagement for a hashtag search
+// (the trends scraper returns country trend lists with no per-hashtag stats).
+// Override with APIFY_TIKTOK_ACTOR if you prefer a different one.
+const DEFAULT_ACTOR = "clockworks~tiktok-scraper";
 
 async function fetchWithTimeout(
   url: string,
@@ -28,11 +31,18 @@ async function fetchWithTimeout(
   }
 }
 
+// Engagement fields vary by actor/version — sometimes flat (playCount), some-
+// times nested under `stats`. Read whichever is present.
 type TikTokItem = {
   playCount?: number;
   diggCount?: number;
   shareCount?: number;
+  stats?: { playCount?: number; diggCount?: number; shareCount?: number };
 };
+
+function eng(it: TikTokItem, field: "playCount" | "diggCount" | "shareCount") {
+  return it[field] ?? it.stats?.[field] ?? 0;
+}
 
 // Compress raw engagement into a 0–100 score with a log scale so a few viral
 // posts don't peg everything at 100.
@@ -40,7 +50,10 @@ function scoreFromItems(items: TikTokItem[]): number {
   if (items.length === 0) return 0;
   const total = items.reduce(
     (sum, it) =>
-      sum + (it.playCount ?? 0) + (it.diggCount ?? 0) * 5 + (it.shareCount ?? 0) * 10,
+      sum +
+      eng(it, "playCount") +
+      eng(it, "diggCount") * 5 +
+      eng(it, "shareCount") * 10,
     0,
   );
   const avg = total / items.length;

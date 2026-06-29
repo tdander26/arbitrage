@@ -122,10 +122,11 @@ function TikTokScore({ keyword }: { keyword: string }) {
       if (!startRes.ok || !start.runId) return setState("unavailable");
       bumpApifyUsage();
 
-      // 2) Poll status until done/failed or ~90s timeout.
-      const deadline = Date.now() + 90_000;
+      // 2) Poll status until done/failed or timeout. The TikTok actor can be
+      // slow (cold start + scrape), so allow up to ~2.5 min.
+      const deadline = Date.now() + 150_000;
       while (Date.now() < deadline) {
-        await sleep(3000);
+        await sleep(4000);
         const sRes = await fetch(`/api/social/status?runId=${start.runId}`, {
           cache: "no-store",
         });
@@ -172,7 +173,7 @@ function TikTokScore({ keyword }: { keyword: string }) {
       disabled={state === "loading"}
       title={`${APIFY_MONTHLY_CAP - apifyUsage().count} TikTok checks left this month`}
     >
-      {state === "loading" ? "checking… (~30s)" : "check TikTok"}
+      {state === "loading" ? "checking… (up to ~2 min)" : "check TikTok"}
     </button>
   );
 }
