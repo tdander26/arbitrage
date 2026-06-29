@@ -9,6 +9,8 @@ export type Override = {
   status?: Status;
   conviction?: Conviction;
   notes?: string;
+  // Snapshot captured when a name is marked Positioned — your forward record.
+  entry?: { signal: number; date: string; interest: number; momentumPct: number };
 };
 
 export type Overrides = Record<string, Override>;

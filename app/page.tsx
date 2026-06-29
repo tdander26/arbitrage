@@ -13,36 +13,35 @@ export default function Home() {
         </p>
       </header>
 
-      <section className="howto">
-        <h2>How to use this</h2>
+      <details className="howto collapsible">
+        <summary>How to use this ▾</summary>
         <ol>
           <li>
             <strong>Scan the list.</strong> Each card is a public company tied to
-            a consumer product you&apos;re watching. Sort by{" "}
-            <em>trend momentum</em> to surface products accelerating right now.
+            a consumer product. Sort by <em>Signal</em> to surface the best setups
+            (accelerating search + reliable beats).
           </li>
           <li>
-            <strong>Read the run-up.</strong> The sparkline is ~12 months of
-            search/social interest. You want the line bending <em>up</em> into
-            the earnings date — that&apos;s demand the Street may not have priced.
+            <strong>Read the run-up.</strong> The sparkline is ~12 months of real
+            search interest. You want it bending <em>up</em> into the earnings
+            date — demand the Street may not have priced.
           </li>
           <li>
-            <strong>Mind the countdown.</strong> The right column shows days to
-            the next earnings — your deadline to form a view. Inside ~30 days it
-            turns amber.
+            <strong>Mind the countdown.</strong> Days to the next earnings is your
+            deadline to form a view; inside ~30 days it turns amber.
           </li>
           <li>
-            <strong>Log your call.</strong> Set conviction and move a name from{" "}
-            <em>Watching</em> → <em>Positioned</em> → <em>Passed</em> as you act.
-            Filter chips hide statuses you&apos;re done with.
+            <strong>Log your call.</strong> Tap the status to move a name{" "}
+            <em>Watching</em> → <em>Positioned</em> → <em>Passed</em>. Marking it
+            Positioned snapshots the Signal so you can track how the call ages.
           </li>
         </ol>
-      </section>
+      </details>
 
       <Dashboard />
 
-      <section className="howto risk">
-        <h2>Edge &amp; risk — read this</h2>
+      <details className="howto risk collapsible">
+        <summary>⚠ Edge &amp; risk — read this ▾</summary>
         <ul>
           <li>
             <strong>The edge is being early, not being right about the
@@ -78,7 +77,7 @@ export default function Home() {
           and search trends are noisy leading indicators, not guarantees;
           markets price in information you can&apos;t see. Trade your own risk.
         </p>
-      </section>
+      </details>
 
       <footer className="foot">
         <span>
