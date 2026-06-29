@@ -9,8 +9,13 @@ import {
   type FormEvent,
 } from "react";
 import type { Conviction, EnrichedOpportunity, Status } from "@/lib/types";
-import { momentumOf } from "@/lib/enrich";
-import { beatRate, computeSignal } from "@/lib/signal";
+import { trendStats } from "@/lib/enrich";
+import {
+  beatRate,
+  meaningfulBeatRate,
+  computeSignal,
+  type SignalBreakdown,
+} from "@/lib/signal";
 import { useOverrides } from "./useOverrides";
 import { useCustom } from "./useCustom";
 import Card, { type CardView } from "./Card";
@@ -56,8 +61,11 @@ type ScoreResult = {
   latest: number;
   momentum: number;
   momentumPct: number;
+  yoyPct?: number | null;
+  isYoY?: boolean;
+  extended?: boolean;
   beat: number;
-  signal: { score: number; acceleration: number; interest: number; conversion: number };
+  signal: SignalBreakdown;
 };
 
 export default function Dashboard() {
@@ -151,10 +159,27 @@ export default function Dashboard() {
       const t = trends[o.keyword];
       const points = t?.points ?? o.sampleTrend;
       const source = t?.source ?? "sample";
-      const { latest, momentum, momentumPct } = momentumOf(points);
+      const st = trendStats(points);
       const beat = beatRate(o.epsHistory);
-      const signal = computeSignal({ momentumPct, latest, beat });
-      return { o, points, source, latest, momentum, momentumPct, beat, signal };
+      const signal = computeSignal({
+        momentumPct: st.momentumPct,
+        latest: st.latest,
+        beat: meaningfulBeatRate(o.epsHistory),
+        expectedMovePct: o.options?.expectedMovePct,
+      });
+      return {
+        o,
+        points,
+        source,
+        latest: st.latest,
+        momentum: st.momentum,
+        momentumPct: st.momentumPct,
+        yoyPct: st.yoyPct,
+        isYoY: st.isYoY,
+        extended: st.extended,
+        beat,
+        signal,
+      };
     });
   }, [feed, trends, overrides]);
 
@@ -189,6 +214,9 @@ export default function Dashboard() {
           latest: s.latest,
           momentum: s.momentum,
           momentumPct: s.momentumPct,
+          yoyPct: s.yoyPct,
+          isYoY: s.isYoY,
+          extended: s.extended,
           beat: s.beat,
           signal: s.signal,
           isCustom: true,

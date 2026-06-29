@@ -37,6 +37,9 @@ export type CardView = {
   latest: number;
   momentum: number;
   momentumPct: number;
+  yoyPct?: number | null;
+  isYoY?: boolean;
+  extended?: boolean;
   beat: number;
   signal: SignalBreakdown;
   isCustom?: boolean;
@@ -93,10 +96,13 @@ function bumpApifyUsage(): number {
   return next.count;
 }
 
-// On-demand TikTok activity score (Apify). Only runs on click to save credits.
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// On-demand TikTok activity score (Apify). Starts a run then polls its status,
+// with a hard client-side timeout so the button never hangs on "checking…".
 function TikTokScore({ keyword }: { keyword: string }) {
   const [state, setState] = useState<
-    "idle" | "loading" | "done" | "unavailable" | "capped"
+    "idle" | "loading" | "done" | "unavailable" | "capped" | "timeout"
   >("idle");
   const [score, setScore] = useState<number | null>(null);
 
@@ -107,17 +113,30 @@ function TikTokScore({ keyword }: { keyword: string }) {
     }
     setState("loading");
     try {
-      const res = await fetch(
+      // 1) Start the run (fast). A returned runId means a billable run began.
+      const startRes = await fetch(
         `/api/social?keyword=${encodeURIComponent(keyword)}`,
         { cache: "no-store" },
       );
-      const data = await res.json();
-      if (!res.ok || data.score == null) return setState("unavailable");
-      // Count only successful runs against the cap, so failures (no token,
-      // network errors) never lock the user out.
+      const start = await startRes.json();
+      if (!startRes.ok || !start.runId) return setState("unavailable");
       bumpApifyUsage();
-      setScore(data.score);
-      setState("done");
+
+      // 2) Poll status until done/failed or ~90s timeout.
+      const deadline = Date.now() + 90_000;
+      while (Date.now() < deadline) {
+        await sleep(3000);
+        const sRes = await fetch(`/api/social/status?runId=${start.runId}`, {
+          cache: "no-store",
+        });
+        const s = await sRes.json();
+        if (s.status === "done" && s.score != null) {
+          setScore(s.score);
+          return setState("done");
+        }
+        if (s.status === "failed") return setState("unavailable");
+      }
+      setState("timeout");
     } catch {
       setState("unavailable");
     }
@@ -133,9 +152,18 @@ function TikTokScore({ keyword }: { keyword: string }) {
     );
   if (state === "capped")
     return (
-      <span className="tiktok off" title={`Monthly cap of ${APIFY_MONTHLY_CAP} TikTok checks reached`}>
+      <span
+        className="tiktok off"
+        title={`Monthly cap of ${APIFY_MONTHLY_CAP} TikTok checks reached`}
+      >
         TikTok cap reached
       </span>
+    );
+  if (state === "timeout")
+    return (
+      <button className="tiktok btn" onClick={check}>
+        TikTok timed out — retry
+      </button>
     );
   return (
     <button
@@ -144,7 +172,7 @@ function TikTokScore({ keyword }: { keyword: string }) {
       disabled={state === "loading"}
       title={`${APIFY_MONTHLY_CAP - apifyUsage().count} TikTok checks left this month`}
     >
-      {state === "loading" ? "checking…" : "check TikTok"}
+      {state === "loading" ? "checking… (~30s)" : "check TikTok"}
     </button>
   );
 }
@@ -218,6 +246,7 @@ export default function Card({
     expectedMovePct: o.options?.expectedMovePct,
     hasTrend,
     scored,
+    extended: scored && view.extended,
   });
 
   return (
@@ -315,9 +344,13 @@ export default function Card({
                 <>
                   <span
                     className={`mom ${view.momentum >= 0 ? "pos" : "neg"}`}
-                    title="Recent 3-mo avg vs. prior 3-mo avg"
+                    title={
+                      view.isYoY
+                        ? "Year-over-year change (deseasonalized)"
+                        : "Recent vs. prior window"
+                    }
                   >
-                    {signedPct(view.momentumPct)} momentum
+                    {signedPct(view.momentumPct)} {view.isYoY ? "YoY" : "mom"}
                   </span>
                   <span className="interest">
                     interest {view.latest}/100

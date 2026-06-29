@@ -11,6 +11,7 @@ export type VerdictInput = {
   expectedMovePct?: number; // options-implied, if known
   hasTrend?: boolean; // false when no trend data is available at all
   scored?: boolean; // false when trend is placeholder (not live) — don't score
+  extended?: boolean; // latest near its 12-mo high — may already have run up
 };
 
 export type Chip = { label: string; tone: "good" | "bad" | "neutral" };
@@ -85,8 +86,10 @@ export function makeVerdict(v: VerdictInput): Verdict {
     else parts.push(`beat ${v.beatsCount}/${v.quarters}`);
   }
 
+  if (v.extended) parts.push("but extended (near 12-mo high)");
+
   if (typeof v.expectedMovePct === "number" && v.expectedMovePct >= 0.15) {
-    parts.push(`but ±${Math.round(v.expectedMovePct * 100)}% already priced in`);
+    parts.push(`±${Math.round(v.expectedMovePct * 100)}% already priced in`);
   }
 
   const line = parts.join(" · ");
@@ -134,6 +137,8 @@ export function makeVerdict(v: VerdictInput): Verdict {
       tone: "neutral",
     });
   }
+
+  if (v.extended) chips.push({ label: "extended", tone: "bad" });
 
   return { tier, line, chips };
 }

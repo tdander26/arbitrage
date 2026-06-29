@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getNextEarnings, getEarningsHistory } from "@/lib/earnings";
 import { getTrend } from "@/lib/trends";
-import { momentumOf, daysBetween } from "@/lib/enrich";
-import { beatRate, computeSignal } from "@/lib/signal";
+import { trendStats, daysBetween } from "@/lib/enrich";
+import { beatRate, meaningfulBeatRate, computeSignal } from "@/lib/signal";
 import { cleanTicker, cleanKeyword } from "@/lib/validate";
 import { rateLimit, clientKey } from "@/lib/ratelimit";
 
@@ -36,9 +36,13 @@ export async function GET(req: NextRequest) {
   ]);
 
   const points = trend.points;
-  const { latest, momentum, momentumPct } = momentumOf(points);
+  const stats = trendStats(points);
   const beat = beatRate(history ?? undefined);
-  const signal = computeSignal({ momentumPct, latest, beat });
+  const signal = computeSignal({
+    momentumPct: stats.momentumPct,
+    latest: stats.latest,
+    beat: meaningfulBeatRate(history ?? undefined),
+  });
 
   return NextResponse.json({
     ticker,
@@ -53,9 +57,12 @@ export async function GET(req: NextRequest) {
     epsHistory: history ?? undefined,
     daysToEarnings: earnings ? daysBetween(now, earnings.date) : null,
     trend: { points, source: trend.source },
-    latest,
-    momentum,
-    momentumPct,
+    latest: stats.latest,
+    momentum: stats.momentum,
+    momentumPct: stats.momentumPct,
+    yoyPct: stats.yoyPct,
+    isYoY: stats.isYoY,
+    extended: stats.extended,
     beat,
     signal,
     // Provenance flags so the UI can be honest about what's real.
