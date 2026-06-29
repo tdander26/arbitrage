@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import type { Conviction, EnrichedOpportunity, Status } from "@/lib/types";
 import { momentumOf } from "@/lib/enrich";
 import { beatRate, computeSignal } from "@/lib/signal";
@@ -11,7 +18,8 @@ import Card, { type CardView } from "./Card";
 type Feed = {
   asOf: string;
   count: number;
-  earningsSource?: "finnhub" | "seed";
+  earningsSource?: "finnhub" | "seed" | "degraded";
+  liveEarningsCount?: number;
   opportunities: EnrichedOpportunity[];
 };
 
@@ -99,10 +107,14 @@ export default function Dashboard() {
     load();
   }, [load]);
 
-  // Score any custom tickers we haven't scored yet.
+  // Score any custom tickers we haven't scored yet. An in-flight ref (not the
+  // `scores` state) is the guard, so this can't double-fetch a ticker or storm
+  // the scoring endpoint when state updates re-run the effect.
+  const inFlight = useRef<Set<string>>(new Set());
   useEffect(() => {
     custom.forEach(async (spec) => {
-      if (scores[spec.ticker]) return;
+      if (scores[spec.ticker] || inFlight.current.has(spec.ticker)) return;
+      inFlight.current.add(spec.ticker);
       setScores((p) => ({ ...p, [spec.ticker]: "loading" }));
       try {
         const qs = new URLSearchParams({
@@ -116,9 +128,13 @@ export default function Dashboard() {
         setScores((p) => ({ ...p, [spec.ticker]: data }));
       } catch {
         setScores((p) => ({ ...p, [spec.ticker]: "error" }));
+      } finally {
+        inFlight.current.delete(spec.ticker);
       }
     });
-  }, [custom, scores]);
+    // Only re-run when the custom list changes, not on every score update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [custom]);
 
   // Seeded names → CardView (apply overrides, live trends, signal).
   const seededViews: CardView[] = useMemo(() => {
@@ -194,7 +210,10 @@ export default function Dashboard() {
     let f = allViews.filter((v) => !hideStatus.has(v.o.status));
     if (windowWeeks != null)
       f = f.filter(
-        (v) => v.o.daysToEarnings != null && v.o.daysToEarnings <= windowWeeks * 7,
+        (v) =>
+          v.o.daysToEarnings != null &&
+          v.o.daysToEarnings >= 0 &&
+          v.o.daysToEarnings <= windowWeeks * 7,
       );
     if (category) f = f.filter((v) => v.o.category === category);
     if (query.trim()) {
@@ -207,19 +226,30 @@ export default function Dashboard() {
       );
     }
     const s = [...f];
-    if (sort === "signal") s.sort((a, b) => b.signal.score - a.signal.score);
-    if (sort === "momentum") s.sort((a, b) => b.momentum - a.momentum);
+    // Placeholder-trend cards have fabricated momentum/interest/signal, so they
+    // must sink to the bottom in EVERY trend-based sort — not just the Signal
+    // one — so they never outrank genuinely live-scored names.
+    const live = (v: CardView) => v.source === "live";
+    const by = (v: CardView, val: number) => (live(v) ? val : -Infinity);
+    if (sort === "signal")
+      s.sort((a, b) => by(b, b.signal.score) - by(a, a.signal.score));
+    if (sort === "momentum")
+      s.sort((a, b) => by(b, b.momentum) - by(a, a.momentum));
     if (sort === "earnings")
       s.sort(
         (a, b) => (a.o.daysToEarnings ?? 1e9) - (b.o.daysToEarnings ?? 1e9),
       );
-    if (sort === "interest") s.sort((a, b) => b.latest - a.latest);
+    if (sort === "interest")
+      s.sort((a, b) => by(b, b.latest) - by(a, a.latest));
     return s;
   }, [allViews, sort, hideStatus, windowWeeks, category, query]);
 
-  // Marking a name Positioned snapshots the current Signal as the entry record.
+  // Marking a name Positioned snapshots the current Signal as the entry record
+  // — but ONLY when the card is actually scored (live trend). Snapshotting a
+  // placeholder Signal would record a fabricated entry.
   function setStatus(view: CardView, s: Status) {
-    if (s === "positioned" && !overrides[view.o.ticker]?.entry) {
+    const scored = view.source === "live" && view.points.length >= 2;
+    if (s === "positioned" && scored && !overrides[view.o.ticker]?.entry) {
       setOverride(view.o.ticker, {
         status: s,
         entry: {
@@ -250,6 +280,10 @@ export default function Dashboard() {
     for (const v of allViews) {
       const h = v.o.epsHistory;
       if (!h || h.length === 0) continue;
+      // beat-rate / surprise use real EPS history for every name; the
+      // accelerating-vs-flat split depends on momentum, so only bucket names
+      // with a LIVE trend (placeholder momentum would taint the stat).
+      const liveTrend = v.source === "live";
       const accel = v.momentumPct > 0;
       for (const q of h) {
         const beat = q.actual >= q.estimate;
@@ -257,6 +291,7 @@ export default function Dashboard() {
         if (beat) beats++;
         if (q.estimate !== 0)
           surpriseSum += (q.actual - q.estimate) / Math.abs(q.estimate);
+        if (!liveTrend) continue;
         if (accel) {
           accelQ++;
           if (beat) accelBeats++;
@@ -304,9 +339,20 @@ export default function Dashboard() {
           <strong>{rows.length}</strong> opportunities
           {feed?.earningsSource && (
             <span
-              className={`feed-badge ${feed.earningsSource === "finnhub" ? "live" : "seed"}`}
+              className={`feed-badge ${feed.earningsSource === "finnhub" ? "live" : feed.earningsSource === "degraded" ? "warn" : "seed"}`}
+              title={
+                feed.earningsSource === "finnhub"
+                  ? `${feed.liveEarningsCount ?? 0} of ${feed.count} earnings live from Finnhub`
+                  : feed.earningsSource === "degraded"
+                    ? "Finnhub key set but calls failed/rate-limited — showing seeded dates"
+                    : "No Finnhub key — showing seeded dates"
+              }
             >
-              {feed.earningsSource === "finnhub" ? "earnings: live" : "earnings: seed"}
+              {feed.earningsSource === "finnhub"
+                ? `earnings: live (${feed.liveEarningsCount}/${feed.count})`
+                : feed.earningsSource === "degraded"
+                  ? "earnings: degraded"
+                  : "earnings: seed"}
             </span>
           )}
         </div>
@@ -457,7 +503,17 @@ export default function Dashboard() {
           Edits (status, conviction, notes) and custom stocks save to this
           browser.
           {editCount > 0 && (
-            <button className="reset" onClick={clearAll}>
+            <button
+              className="reset"
+              onClick={() => {
+                if (
+                  confirm(
+                    `Clear all ${editCount} edited names (status, conviction, notes, and Positioned entry records)? This can't be undone.`,
+                  )
+                )
+                  clearAll();
+              }}
+            >
               reset {editCount} edited
             </button>
           )}
