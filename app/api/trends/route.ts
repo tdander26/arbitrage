@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // Google Trends and falls back to the seeded sample series (matched by keyword)
 // so the endpoint always returns usable data, flagged with its source.
 export async function GET(req: NextRequest) {
-  if (!rateLimit(`trends:${clientKey(req)}`, 40, 60_000)) {
+  if (!(await rateLimit(`trends:${clientKey(req)}`, 40, 60_000))) {
     return NextResponse.json({ error: "Rate limited" }, { status: 429 });
   }
   const keyword = cleanKeyword(req.nextUrl.searchParams.get("keyword"));
