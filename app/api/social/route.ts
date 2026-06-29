@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSocialVolume } from "@/lib/social";
+import { startSocialRun } from "@/lib/social";
 import { cleanKeyword } from "@/lib/validate";
 import { rateLimit, clientKey } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
-// Apify TikTok runs can take 30–60s; use the max serverless budget.
-export const maxDuration = 60;
 
 // GET /api/social?keyword=coconut+water
-// Runs the Apify TikTok actor on demand for one keyword and returns a 0–100
-// activity score. Requires APIFY_TOKEN; returns 503 with a clear message when
-// it's unset so the UI can explain why.
+// Starts an Apify TikTok run and returns its runId immediately. The client
+// then polls /api/social/status. Requires APIFY_TOKEN; returns 503 when unset.
 export async function GET(req: NextRequest) {
-  // Apify runs are billable — tightest server-side limit of the three.
+  // Starting a run is the billable action — keep this rate limit tight.
   if (!rateLimit(`social:${clientKey(req)}`, 8, 60_000)) {
     return NextResponse.json(
-      { score: null, error: "Rate limited — try again shortly." },
+      { runId: null, error: "Rate limited — try again shortly." },
       { status: 429 },
     );
   }
@@ -27,18 +24,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const result = await getSocialVolume(keyword);
-  if (!result) {
+  const runId = await startSocialRun(keyword);
+  if (!runId) {
     return NextResponse.json(
       {
-        keyword,
-        score: null,
+        runId: null,
         error:
           "Social volume unavailable. Set APIFY_TOKEN in the environment to enable TikTok data.",
       },
       { status: 503 },
     );
   }
-
-  return NextResponse.json(result);
+  return NextResponse.json({ runId });
 }

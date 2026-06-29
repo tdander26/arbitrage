@@ -94,7 +94,9 @@ async function fetchSerpApiTrends(keyword: string): Promise<TrendPoint[]> {
     engine: "google_trends",
     q: keyword,
     data_type: "TIMESERIES",
-    date: "today 12-m",
+    // 5 years of weekly data: enough history to compute year-over-year change
+    // (deseasonalized momentum), while the UI shows just the last ~12 months.
+    date: "today 5-y",
     geo: "US",
     api_key: key,
   });

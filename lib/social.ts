@@ -1,21 +1,17 @@
-// Social-volume provider (TikTok) via Apify. When APIFY_TOKEN is set, the app
-// runs the TikTok Trends / hashtag scraper for a keyword and returns a coarse
-// activity score; otherwise social volume is logged manually. Never throws —
-// returns null on any miss.
+// Social-volume provider (TikTok) via Apify, using an ASYNC start-and-poll
+// flow. The TikTok scraper can take 30–90s — longer than a serverless request
+// should block — so we start the run in one fast request and poll its status
+// in subsequent ones, rather than holding a single connection open (which made
+// the client hang on "checking…" forever).
 //
-// Get a token at https://console.apify.com/account/integrations and add it in
-// Vercel: Settings → Environment Variables → APIFY_TOKEN
-//
-// Actor: https://apify.com/clockworks/tiktok-trends-scraper
+// Get a token at https://console.apify.com/account/integrations and set
+// APIFY_TOKEN in Vercel.  Actor: https://apify.com/clockworks/tiktok-trends-scraper
 
-export type SocialVolume = {
-  keyword: string;
-  /** Normalized 0–100 activity score derived from recent post engagement. */
-  score: number;
-  source: "apify";
-};
+export type SocialStatus =
+  | { status: "pending" }
+  | { status: "done"; score: number }
+  | { status: "failed" };
 
-// Default actor; override with APIFY_TIKTOK_ACTOR if you prefer another.
 const DEFAULT_ACTOR = "clockworks~tiktok-trends-scraper";
 
 async function fetchWithTimeout(
@@ -54,34 +50,61 @@ function scoreFromItems(items: TikTokItem[]): number {
 }
 
 /**
- * Run the Apify TikTok actor synchronously for a keyword and return a 0–100
- * activity score, or null if APIFY_TOKEN is unset or the run fails.
+ * Start an Apify TikTok run for a keyword. Returns the runId immediately, or
+ * null when APIFY_TOKEN is unset or the run couldn't be started.
  */
-export async function getSocialVolume(
-  keyword: string,
-): Promise<SocialVolume | null> {
+export async function startSocialRun(keyword: string): Promise<string | null> {
   const token = process.env.APIFY_TOKEN;
   if (!token) return null;
 
   const actor = process.env.APIFY_TIKTOK_ACTOR ?? DEFAULT_ACTOR;
-  const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${token}`;
-
+  const url = `https://api.apify.com/v2/acts/${actor}/runs?token=${token}`;
   try {
     const res = await fetchWithTimeout(
       url,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Keep the result set small so the actor run finishes within the
-        // serverless time budget.
         body: JSON.stringify({ hashtags: [keyword], resultsPerPage: 10 }),
       },
-      55_000,
+      8000,
     );
     if (!res.ok) return null;
-    const items = (await res.json()) as TikTokItem[];
-    return { keyword, score: scoreFromItems(items), source: "apify" };
+    const json = (await res.json()) as { data?: { id?: string } };
+    return json.data?.id ?? null;
   } catch {
     return null;
+  }
+}
+
+/** Poll a started run. Returns pending until the actor finishes. */
+export async function getSocialRun(runId: string): Promise<SocialStatus> {
+  const token = process.env.APIFY_TOKEN;
+  if (!token) return { status: "failed" };
+
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.apify.com/v2/actor-runs/${runId}?token=${token}`,
+      {},
+      8000,
+    );
+    if (!res.ok) return { status: "failed" };
+    const json = (await res.json()) as { data?: { status?: string } };
+    const s = json.data?.status;
+
+    if (s === "SUCCEEDED") {
+      const itemsRes = await fetchWithTimeout(
+        `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${token}&limit=25`,
+        {},
+        8000,
+      );
+      if (!itemsRes.ok) return { status: "failed" };
+      const items = (await itemsRes.json()) as TikTokItem[];
+      return { status: "done", score: scoreFromItems(items) };
+    }
+    if (s === "READY" || s === "RUNNING") return { status: "pending" };
+    return { status: "failed" }; // FAILED / ABORTED / TIMED-OUT
+  } catch {
+    return { status: "failed" };
   }
 }

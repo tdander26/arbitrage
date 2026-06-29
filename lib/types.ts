@@ -68,8 +68,14 @@ export type EnrichedOpportunity = Opportunity & {
   daysToEarnings: number;
   /** Latest trend reading. */
   latest: number;
-  /** avg(last 3 months) − avg(prior 3 months); positive = accelerating. */
+  /** Acceleration magnitude (YoY when available, else short-window). */
   momentum: number;
-  /** momentum as a % of the prior-3-month average. */
+  /** Acceleration as a fraction; deseasonalized (YoY) when isYoY is true. */
   momentumPct: number;
+  /** Year-over-year change, or null when history is too short. */
+  yoyPct?: number | null;
+  /** True when momentumPct is the deseasonalized YoY figure. */
+  isYoY?: boolean;
+  /** Latest near its trailing-12-month high — may already have run up. */
+  extended?: boolean;
 };
