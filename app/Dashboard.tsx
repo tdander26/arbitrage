@@ -428,10 +428,12 @@ export default function Dashboard() {
             </select>
           </label>
           <div className="chips">
+            <span className="chips-label">Show</span>
             {(["watching", "positioned", "passed"] as Status[]).map((s) => (
               <button
                 key={s}
                 className={`chip ${hideStatus.has(s) ? "off" : "on"}`}
+                title={hideStatus.has(s) ? `Show ${STATUS_LABEL[s]}` : `Hide ${STATUS_LABEL[s]}`}
                 onClick={() => toggleStatus(s)}
               >
                 {STATUS_LABEL[s]}
@@ -513,18 +515,27 @@ export default function Dashboard() {
           </p>
         ))}
 
-      <div className="cards">
-        {rows.map((v) => (
-          <Card
-            key={v.o.ticker}
-            view={v}
-            onStatus={(s) => setStatus(v, s)}
-            onConviction={(c) => setOverride(v.o.ticker, { conviction: c })}
-            onNote={(n) => setOverride(v.o.ticker, { notes: n })}
-            onRemove={v.isCustom ? () => remove(v.o.ticker) : undefined}
-          />
-        ))}
-      </div>
+      {!feed && !error ? (
+        <p className="empty-state">Loading opportunities…</p>
+      ) : rows.length === 0 ? (
+        <p className="empty-state">
+          No matches. Try clearing the search, category, or earnings-window
+          filters — or re-enable a hidden status above.
+        </p>
+      ) : (
+        <div className="cards">
+          {rows.map((v) => (
+            <Card
+              key={v.o.ticker}
+              view={v}
+              onStatus={(s) => setStatus(v, s)}
+              onConviction={(c) => setOverride(v.o.ticker, { conviction: c })}
+              onNote={(n) => setOverride(v.o.ticker, { notes: n })}
+              onRemove={v.isCustom ? () => remove(v.o.ticker) : undefined}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="panel-foot">
         <span>

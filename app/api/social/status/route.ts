@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Polls a previously-started Apify run. Returns { status: pending|done|failed }.
 export async function GET(req: NextRequest) {
   // Polling is cheap (status reads, not billable runs) but bound it anyway.
-  if (!rateLimit(`socialstatus:${clientKey(req)}`, 120, 60_000)) {
+  if (!(await rateLimit(`socialstatus:${clientKey(req)}`, 120, 60_000))) {
     return NextResponse.json({ status: "failed" }, { status: 429 });
   }
   const runId = req.nextUrl.searchParams.get("runId");

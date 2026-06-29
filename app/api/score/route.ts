@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 // keyword, and the composite Signal. Missing pieces degrade gracefully.
 export async function GET(req: NextRequest) {
   // 3 upstream calls per request (2 Finnhub + 1 SerpApi) — keep this tight.
-  if (!rateLimit(`score:${clientKey(req)}`, 12, 60_000)) {
+  if (!(await rateLimit(`score:${clientKey(req)}`, 12, 60_000))) {
     return NextResponse.json({ error: "Rate limited" }, { status: 429 });
   }
   const ticker = cleanTicker(req.nextUrl.searchParams.get("ticker"));

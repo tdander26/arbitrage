@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // then polls /api/social/status. Requires APIFY_TOKEN; returns 503 when unset.
 export async function GET(req: NextRequest) {
   // Starting a run is the billable action — keep this rate limit tight.
-  if (!rateLimit(`social:${clientKey(req)}`, 8, 60_000)) {
+  if (!(await rateLimit(`social:${clientKey(req)}`, 8, 60_000))) {
     return NextResponse.json(
       { runId: null, error: "Rate limited — try again shortly." },
       { status: 429 },
