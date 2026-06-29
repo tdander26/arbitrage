@@ -139,6 +139,10 @@ body {
 .feed-badge.seed {
   color: var(--muted);
 }
+.feed-badge.warn {
+  color: var(--amber);
+  border-color: var(--amber);
+}
 
 .controls {
   display: flex;
@@ -363,6 +367,14 @@ body {
 }
 .signal-score.tier-weak {
   color: var(--muted);
+}
+.signal-score.tier-unscored {
+  color: var(--muted);
+  opacity: 0.6;
+}
+.countdown.past {
+  color: var(--muted);
+  opacity: 0.6;
 }
 
 .custom-tag {
@@ -804,5 +816,22 @@ code {
   .baserates,
   .provenance-banner {
     font-size: 0.78rem;
+  }
+
+  /* Bigger tap targets for the per-card controls on touch screens. */
+  .status,
+  .conv,
+  .chip,
+  .tiktok.btn,
+  .add-stock button,
+  .add-stock input {
+    min-height: 34px;
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+  }
+  .remove {
+    min-width: 34px;
+    min-height: 34px;
+    font-size: 1rem;
   }
 }

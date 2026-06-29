@@ -7,47 +7,53 @@ import type { EnrichedOpportunity, Opportunity } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 // Overlay live Finnhub earnings onto a seeded opportunity when available.
+// Returns whether live data actually came back, so the response can report
+// provenance honestly (rather than assuming "live" just because a key is set).
 async function withLiveEarnings(
   opp: Opportunity,
   now: Date,
-): Promise<Opportunity> {
+): Promise<{ opp: Opportunity; live: boolean }> {
   const live = await getNextEarnings(opp.ticker, now);
-  if (!live) return opp;
+  if (!live) return { opp: { ...opp, earningsLive: false }, live: false };
   return {
-    ...opp,
-    earningsDate: live.date,
-    earningsTiming: live.timing ?? opp.earningsTiming,
-    earningsTentative: live.tentative ?? opp.earningsTentative,
-    estimateEps: live.estimateEps ?? opp.estimateEps,
+    opp: {
+      ...opp,
+      earningsDate: live.date,
+      earningsTiming: live.timing ?? opp.earningsTiming,
+      earningsTentative: live.tentative ?? opp.earningsTentative,
+      estimateEps: live.estimateEps ?? opp.estimateEps,
+      earningsLive: true,
+    },
+    live: true,
   };
 }
 
 // Returns the tracked opportunities enriched with days-to-earnings and trend
-// momentum, sorted so the most actionable (accelerating + near earnings) float
-// to the top. Earnings dates come from Finnhub when FINNHUB_API_KEY is set,
-// otherwise from the seed. Trend values use the seeded sample series; the live
-// Google Trends series is fetched per-keyword via /api/trends.
+// momentum. Earnings come from Finnhub when the key is set AND the call
+// succeeds; earningsSource reflects what actually happened, not key presence.
 export async function GET() {
   const now = new Date();
 
-  const withEarnings = await Promise.all(
-    SEED.map((o) => withLiveEarnings(o, now)),
-  );
+  const results = await Promise.all(SEED.map((o) => withLiveEarnings(o, now)));
+  const liveCount = results.filter((r) => r.live).length;
 
-  const opportunities: EnrichedOpportunity[] = withEarnings
-    .map((o) => enrich(o, o.sampleTrend, now))
+  const opportunities: EnrichedOpportunity[] = results
+    .map((r) => enrich(r.opp, r.opp.sampleTrend, now))
     .sort((a, b) => {
-      // Prioritize positive momentum, then proximity to earnings.
       if (b.momentum !== a.momentum) return b.momentum - a.momentum;
       return a.daysToEarnings - b.daysToEarnings;
     });
 
-  const liveEarnings = Boolean(process.env.FINNHUB_API_KEY);
+  // Honest provenance: "finnhub" only if at least one live fetch succeeded;
+  // "degraded" when a key is set but every call fell back to seed dates.
+  const keyed = Boolean(process.env.FINNHUB_API_KEY);
+  const earningsSource = liveCount > 0 ? "finnhub" : keyed ? "degraded" : "seed";
 
   return NextResponse.json({
     asOf: now.toISOString(),
     count: opportunities.length,
-    earningsSource: liveEarnings ? "finnhub" : "seed",
+    earningsSource,
+    liveEarningsCount: liveCount,
     opportunities,
   });
 }

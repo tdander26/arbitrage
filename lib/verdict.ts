@@ -10,17 +10,62 @@ export type VerdictInput = {
   daysToEarnings: number | null;
   expectedMovePct?: number; // options-implied, if known
   hasTrend?: boolean; // false when no trend data is available at all
+  scored?: boolean; // false when trend is placeholder (not live) — don't score
 };
 
 export type Chip = { label: string; tone: "good" | "bad" | "neutral" };
 
 export type Verdict = {
-  tier: "Strong" | "Mixed" | "Weak";
+  tier: "Strong" | "Mixed" | "Weak" | "Unscored";
   line: string;
   chips: Chip[];
 };
 
 export function makeVerdict(v: VerdictInput): Verdict {
+  // A card is only "scored" when its trend is real live data. On placeholder
+  // or missing trend, we refuse to present an authoritative Signal — the rest
+  // of the card (earnings, beats, expected move) is still real and shown.
+  const trustworthy = v.hasTrend !== false && v.scored !== false;
+
+  if (!trustworthy) {
+    const parts: string[] = [
+      v.hasTrend === false
+        ? "no live trend data — Signal not scored"
+        : "placeholder trend (search rate-limited) — Signal not scored",
+    ];
+    if (v.quarters > 0)
+      parts.push(
+        v.beatsCount === v.quarters
+          ? `beats all ${v.quarters}`
+          : `beat ${v.beatsCount}/${v.quarters}`,
+      );
+    const chips: Chip[] = [
+      {
+        label: v.hasTrend === false ? "no trend data" : "not scored",
+        tone: "neutral",
+      },
+    ];
+    if (v.quarters > 0)
+      chips.push({
+        label: `beats ${v.beatsCount}/${v.quarters}`,
+        tone:
+          v.beatsCount / v.quarters >= 0.75
+            ? "good"
+            : v.beatsCount / v.quarters >= 0.5
+              ? "neutral"
+              : "bad",
+      });
+    if (v.daysToEarnings != null)
+      chips.push({
+        label:
+          v.daysToEarnings < 0
+            ? "earnings passed"
+            : `${v.daysToEarnings}d to earnings`,
+        tone: "neutral",
+      });
+    return { tier: "Unscored", line: parts.join(" · "), chips };
+  }
+
   const tier =
     v.signalScore >= 65 ? "Strong" : v.signalScore >= 45 ? "Mixed" : "Weak";
 
@@ -82,8 +127,11 @@ export function makeVerdict(v: VerdictInput): Verdict {
 
   if (v.daysToEarnings != null) {
     chips.push({
-      label: `${v.daysToEarnings}d to earnings`,
-      tone: v.daysToEarnings <= 30 ? "neutral" : "neutral",
+      label:
+        v.daysToEarnings < 0
+          ? "earnings passed"
+          : `${v.daysToEarnings}d to earnings`,
+      tone: "neutral",
     });
   }
 

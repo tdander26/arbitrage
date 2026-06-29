@@ -3,6 +3,8 @@ import { getNextEarnings, getEarningsHistory } from "@/lib/earnings";
 import { getTrend } from "@/lib/trends";
 import { momentumOf, daysBetween } from "@/lib/enrich";
 import { beatRate, computeSignal } from "@/lib/signal";
+import { cleanTicker, cleanKeyword } from "@/lib/validate";
+import { rateLimit, clientKey } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
 
@@ -11,13 +13,17 @@ export const dynamic = "force-dynamic";
 // earnings (next date + estimate) and beat history, live Google Trends for the
 // keyword, and the composite Signal. Missing pieces degrade gracefully.
 export async function GET(req: NextRequest) {
-  const ticker = req.nextUrl.searchParams.get("ticker")?.trim().toUpperCase();
-  const keyword = req.nextUrl.searchParams.get("keyword")?.trim();
-  const name = req.nextUrl.searchParams.get("name")?.trim();
+  // 3 upstream calls per request (2 Finnhub + 1 SerpApi) — keep this tight.
+  if (!rateLimit(`score:${clientKey(req)}`, 12, 60_000)) {
+    return NextResponse.json({ error: "Rate limited" }, { status: 429 });
+  }
+  const ticker = cleanTicker(req.nextUrl.searchParams.get("ticker"));
+  const keyword = cleanKeyword(req.nextUrl.searchParams.get("keyword"));
+  const name = req.nextUrl.searchParams.get("name")?.trim().slice(0, 40);
 
   if (!ticker || !keyword) {
     return NextResponse.json(
-      { error: "ticker and keyword are required" },
+      { error: "valid ticker (1–8 letters) and keyword (1–60 chars) required" },
       { status: 400 },
     );
   }

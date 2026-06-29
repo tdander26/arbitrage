@@ -46,6 +46,8 @@ export type Opportunity = {
   earningsTentative?: boolean;
   /** Consensus EPS estimate for the upcoming report. */
   estimateEps?: number;
+  /** True when the earnings fields came from a successful live Finnhub call. */
+  earningsLive?: boolean;
   /** Trailing reported quarters (oldest → newest) for beat/miss history. */
   epsHistory?: EpsQuarter[];
   conviction: Conviction;

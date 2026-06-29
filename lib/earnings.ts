@@ -15,11 +15,17 @@ type EarningsInfo = {
 
 const BASE = "https://finnhub.io/api/v1/calendar/earnings";
 
-async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+// Cache Finnhub responses for an hour so a dashboard load (21 names) doesn't
+// fan out 21 uncached calls every time and trip the free-tier rate limit.
+async function fetchWithTimeout(
+  url: string,
+  ms: number,
+  revalidate = 3600,
+): Promise<Response> {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), ms);
   try {
-    return await fetch(url, { signal: ctrl.signal });
+    return await fetch(url, { signal: ctrl.signal, next: { revalidate } });
   } finally {
     clearTimeout(id);
   }

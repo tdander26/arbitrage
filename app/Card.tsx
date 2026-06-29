@@ -105,7 +105,6 @@ function TikTokScore({ keyword }: { keyword: string }) {
       setState("capped");
       return;
     }
-    bumpApifyUsage();
     setState("loading");
     try {
       const res = await fetch(
@@ -114,6 +113,9 @@ function TikTokScore({ keyword }: { keyword: string }) {
       );
       const data = await res.json();
       if (!res.ok || data.score == null) return setState("unavailable");
+      // Count only successful runs against the cap, so failures (no token,
+      // network errors) never lock the user out.
+      bumpApifyUsage();
       setScore(data.score);
       setState("done");
     } catch {
@@ -198,8 +200,11 @@ export default function Card({
   onRemove?: () => void;
 }) {
   const { o, signal } = view;
-  const soon = o.daysToEarnings != null && o.daysToEarnings <= 30;
+  const past = o.daysToEarnings != null && o.daysToEarnings < 0;
+  const soon = o.daysToEarnings != null && o.daysToEarnings >= 0 && o.daysToEarnings <= 30;
   const hasTrend = view.points.length >= 2;
+  // Only trust the Signal when the trend is real live data.
+  const scored = view.source === "live" && hasTrend;
   const beatsCount = o.epsHistory
     ? o.epsHistory.filter((q) => q.actual >= q.estimate).length
     : 0;
@@ -212,6 +217,7 @@ export default function Card({
     daysToEarnings: o.daysToEarnings,
     expectedMovePct: o.options?.expectedMovePct,
     hasTrend,
+    scored,
   });
 
   return (
@@ -219,9 +225,13 @@ export default function Card({
       <div className="card-signal">
         <span
           className={`signal-score tier-${verdict.tier.toLowerCase()}`}
-          title={`Acceleration ${signal.acceleration} · Interest ${signal.interest} · Conversion ${signal.conversion}`}
+          title={
+            scored
+              ? `Acceleration ${signal.acceleration} · Interest ${signal.interest} · Conversion ${signal.conversion}`
+              : "Signal needs live trend data — not scored"
+          }
         >
-          {signal.score}
+          {scored ? signal.score : "—"}
         </span>
         <span className="signal-label">{verdict.tier}</span>
       </div>
@@ -249,7 +259,9 @@ export default function Card({
           <p className="journal">
             entered @ signal <strong>{o.entry.signal}</strong> on{" "}
             {fmtDate(o.entry.date)}
-            {signal.score !== o.entry.signal && (
+            {/* Only show the "now" delta when the current Signal is live —
+                otherwise the comparison would be against a placeholder. */}
+            {scored && signal.score !== o.entry.signal && (
               <span className={signal.score >= o.entry.signal ? "pos" : "neg"}>
                 {" "}
                 → now {signal.score} ({signal.score >= o.entry.signal ? "+" : ""}
@@ -299,18 +311,24 @@ export default function Card({
           <>
             <Sparkline points={view.points} />
             <div className="trend-stats">
-              <span
-                className={`mom ${view.momentum >= 0 ? "pos" : "neg"}`}
-                title="Recent 3-mo avg vs. prior 3-mo avg"
-              >
-                {signedPct(view.momentumPct)} momentum
-              </span>
-              <span className="interest">
-                interest {view.latest}/100
-                <span className={`src ${view.source}`}>
-                  {view.source === "live" ? " · live" : " · sample"}
-                </span>
-              </span>
+              {scored ? (
+                <>
+                  <span
+                    className={`mom ${view.momentum >= 0 ? "pos" : "neg"}`}
+                    title="Recent 3-mo avg vs. prior 3-mo avg"
+                  >
+                    {signedPct(view.momentumPct)} momentum
+                  </span>
+                  <span className="interest">
+                    interest {view.latest}/100
+                    <span className="src live"> · live</span>
+                  </span>
+                </>
+              ) : (
+                // Placeholder trend: don't present the fabricated momentum %
+                // or interest as if real.
+                <span className="no-trend">placeholder · not scored</span>
+              )}
               <TikTokScore keyword={o.keyword} />
             </div>
           </>
@@ -325,11 +343,11 @@ export default function Card({
       <div className="card-earn">
         {o.daysToEarnings != null ? (
           <>
-            <span className={`countdown ${soon ? "soon" : ""}`}>
-              {o.daysToEarnings}d
+            <span className={`countdown ${soon ? "soon" : ""} ${past ? "past" : ""}`}>
+              {past ? "—" : `${o.daysToEarnings}d`}
             </span>
             <span className="earn-label">
-              to earnings
+              {past ? "earnings passed" : "to earnings"}
               <br />
               {o.earningsDate ? fmtDate(o.earningsDate) : ""}
               {o.earningsTiming ? ` ${o.earningsTiming}` : ""}
