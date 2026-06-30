@@ -27,7 +27,14 @@ export type CardOpp = {
   epsHistory?: EpsQuarter[];
   options?: { expectedMovePct: number; iv: number; asOf: string };
   daysToEarnings: number | null;
-  entry?: { signal: number; date: string; interest: number; momentumPct: number };
+  price?: number;
+  entry?: {
+    signal: number;
+    date: string;
+    interest: number;
+    momentumPct: number;
+    price?: number;
+  };
 };
 
 export type CardView = {
@@ -269,6 +276,9 @@ export default function Card({
       <div className="card-main">
         <div className="ident">
           <span className="ticker">{o.ticker}</span>
+          {typeof o.price === "number" && (
+            <span className="price">${o.price.toFixed(2)}</span>
+          )}
           <span className="company">{o.company}</span>
           {view.isCustom && <span className="custom-tag">custom</span>}
           <button
@@ -287,17 +297,31 @@ export default function Card({
 
         {o.status === "positioned" && o.entry && (
           <p className="journal">
-            entered @ signal <strong>{o.entry.signal}</strong> on{" "}
-            {fmtDate(o.entry.date)}
-            {/* Only show the "now" delta when the current Signal is live —
-                otherwise the comparison would be against a placeholder. */}
+            entered @ signal <strong>{o.entry.signal}</strong>
+            {typeof o.entry.price === "number" && (
+              <> · ${o.entry.price.toFixed(2)}</>
+            )}{" "}
+            on {fmtDate(o.entry.date)}
+            {/* Only show the "now" Signal delta when current Signal is live. */}
             {scored && signal.score !== o.entry.signal && (
               <span className={signal.score >= o.entry.signal ? "pos" : "neg"}>
                 {" "}
-                → now {signal.score} ({signal.score >= o.entry.signal ? "+" : ""}
-                {signal.score - o.entry.signal})
+                → signal {signal.score}
               </span>
             )}
+            {/* Return-since-entry from live price (real regardless of trend). */}
+            {typeof o.entry.price === "number" &&
+              typeof o.price === "number" &&
+              o.entry.price > 0 && (
+                <span
+                  className={o.price >= o.entry.price ? "pos" : "neg"}
+                  title="Stock return since you marked it Positioned"
+                >
+                  {" "}
+                  · {o.price >= o.entry.price ? "+" : ""}
+                  {(((o.price - o.entry.price) / o.entry.price) * 100).toFixed(1)}%
+                </span>
+              )}
           </p>
         )}
 

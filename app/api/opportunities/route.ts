@@ -6,9 +6,9 @@ import type { EnrichedOpportunity, Opportunity } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Overlay live Finnhub earnings onto a seeded opportunity when available.
-// Returns whether live data actually came back, so the response can report
-// provenance honestly (rather than assuming "live" just because a key is set).
+// Overlay live Finnhub earnings onto a seeded opportunity. Price is fetched
+// on-demand (/api/quote) rather than here, to avoid a 2x Finnhub fan-out on
+// every dashboard load that could trip the free-tier rate limit.
 async function withLiveEarnings(
   opp: Opportunity,
   now: Date,

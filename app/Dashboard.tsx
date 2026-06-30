@@ -56,6 +56,7 @@ type ScoreResult = {
   earningsTentative?: boolean;
   estimateEps?: number;
   epsHistory?: { label: string; estimate: number; actual: number }[];
+  price?: number;
   daysToEarnings: number | null;
   trend: { points: { date: string; value: number }[]; source: "live" | "sample" };
   latest: number;
@@ -79,6 +80,24 @@ export default function Dashboard() {
   const [category, setCategory] = useState<string>("");
   const { overrides, setOverride, clearAll } = useOverrides();
   const { custom, add, remove } = useCustom();
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const priceInFlight = useRef<Set<string>>(new Set());
+
+  async function fetchQuote(ticker: string): Promise<number | undefined> {
+    try {
+      const r = await fetch(`/api/quote?ticker=${encodeURIComponent(ticker)}`, {
+        cache: "no-store",
+      });
+      const d = await r.json();
+      if (typeof d.price === "number") {
+        setPrices((p) => ({ ...p, [ticker]: d.price }));
+        return d.price;
+      }
+    } catch {
+      /* ignore */
+    }
+    return undefined;
+  }
   const [scores, setScores] = useState<
     Record<string, ScoreResult | "loading" | "error">
   >({});
@@ -155,6 +174,7 @@ export default function Dashboard() {
         conviction: ov.conviction ?? base.conviction,
         notes: ov.notes ?? base.notes,
         entry: ov.entry,
+        price: prices[base.ticker],
       };
       const t = trends[o.keyword];
       const points = t?.points ?? o.sampleTrend;
@@ -181,7 +201,7 @@ export default function Dashboard() {
         signal,
       };
     });
-  }, [feed, trends, overrides]);
+  }, [feed, trends, overrides, prices]);
 
   // Custom tickers → CardView.
   const customViews: CardView[] = useMemo(() => {
@@ -205,6 +225,7 @@ export default function Dashboard() {
           earningsTentative: s.earningsTentative,
           estimateEps: s.estimateEps,
           epsHistory: s.epsHistory,
+          price: prices[s.ticker] ?? s.price,
           daysToEarnings: s.daysToEarnings,
         };
         return {
@@ -222,12 +243,25 @@ export default function Dashboard() {
           isCustom: true,
         };
       });
-  }, [custom, scores, overrides]);
+  }, [custom, scores, overrides, prices]);
 
   const allViews = useMemo(
     () => [...customViews, ...seededViews],
     [customViews, seededViews],
   );
+
+  // Fetch a current price for each Positioned name so the journal can show
+  // return-since-entry. Guarded by a ref so it fetches once per ticker.
+  useEffect(() => {
+    for (const v of allViews) {
+      const tk = v.o.ticker;
+      if (v.o.status !== "positioned") continue;
+      if (prices[tk] != null || priceInFlight.current.has(tk)) continue;
+      priceInFlight.current.add(tk);
+      fetchQuote(tk).finally(() => priceInFlight.current.delete(tk));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allViews]);
 
   const categories = useMemo(
     () => Array.from(new Set(allViews.map((v) => v.o.category))).sort(),
@@ -272,12 +306,13 @@ export default function Dashboard() {
     return s;
   }, [allViews, sort, hideStatus, windowWeeks, category, query]);
 
-  // Marking a name Positioned snapshots the current Signal as the entry record
-  // — but ONLY when the card is actually scored (live trend). Snapshotting a
-  // placeholder Signal would record a fabricated entry.
-  function setStatus(view: CardView, s: Status) {
+  // Marking a name Positioned snapshots the current Signal + entry PRICE as the
+  // record — but ONLY when the card is actually scored (live trend).
+  async function setStatus(view: CardView, s: Status) {
     const scored = view.source === "live" && view.points.length >= 2;
     if (s === "positioned" && scored && !overrides[view.o.ticker]?.entry) {
+      // Capture a fresh entry price (fetch if we don't already have one).
+      const price = view.o.price ?? (await fetchQuote(view.o.ticker));
       setOverride(view.o.ticker, {
         status: s,
         entry: {
@@ -285,6 +320,7 @@ export default function Dashboard() {
           date: new Date().toISOString().slice(0, 10),
           interest: view.latest,
           momentumPct: view.momentumPct,
+          price,
         },
       });
     } else {
