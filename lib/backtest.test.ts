@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { nearestIndex, yoyAt, backtestName, aggregate } from "./backtest";
+import {
+  nearestIndex,
+  yoyAt,
+  backtestName,
+  aggregate,
+  postEarningsReturn,
+} from "./backtest";
 
 // 120 weekly points starting 2024-01-07, value = index (rising over time).
 const points = Array.from({ length: 120 }, (_, i) => {
@@ -45,5 +51,42 @@ describe("backtestName + aggregate", () => {
   it("skips quarters with no date", () => {
     const rows = backtestName(points, [{ estimate: 1, actual: 2 }]);
     expect(rows.length).toBe(0);
+  });
+});
+
+describe("postEarningsReturn", () => {
+  const closes = Array.from({ length: 20 }, (_, i) => ({
+    date: new Date(Date.UTC(2026, 0, 1) + i * 86_400_000)
+      .toISOString()
+      .slice(0, 10),
+    close: 100 + i, // rises 1/day
+  }));
+
+  it("computes return from report close to holdDays later", () => {
+    // report on day index 5 (close 105) → +5 days (close 110) = +4.76%
+    const r = postEarningsReturn(closes, closes[5].date, 5);
+    expect(r).toBeCloseTo(110 / 105 - 1, 6);
+  });
+  it("returns null when there is no prior trading day", () => {
+    expect(postEarningsReturn(closes, "2020-01-01", 5)).toBeNull();
+  });
+  it("returns null for empty price data", () => {
+    expect(postEarningsReturn([], "2026-01-05", 5)).toBeNull();
+  });
+});
+
+describe("aggregate with returns", () => {
+  it("reports avg return and up-rate per bucket", () => {
+    const rows = [
+      { date: "a", momentumPct: 0.2, beat: true, surprisePct: 0.1, ret: 0.05 },
+      { date: "b", momentumPct: 0.1, beat: true, surprisePct: 0.1, ret: -0.02 },
+      { date: "c", momentumPct: -0.1, beat: false, surprisePct: -0.1, ret: 0.03 },
+    ];
+    const agg = aggregate(rows);
+    expect(agg.pos.retN).toBe(2);
+    expect(agg.pos.avgReturn).toBeCloseTo(0.015, 6);
+    expect(agg.pos.upRate).toBe(0.5);
+    expect(agg.neg.retN).toBe(1);
+    expect(agg.neg.avgReturn).toBeCloseTo(0.03, 6);
   });
 });

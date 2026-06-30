@@ -1,4 +1,5 @@
 import type { TrendPoint } from "./types";
+import type { DailyClose } from "./prices";
 
 // Directional validation harness: does rising year-over-year search interest
 // INTO a print actually precede an earnings beat? We line up each past quarter's
@@ -14,7 +15,32 @@ export type BtRow = {
   momentumPct: number;
   beat: boolean;
   surprisePct: number;
+  /** ~1-week post-earnings stock return, or null when prices are unavailable. */
+  ret: number | null;
 };
+
+/**
+ * Stock return from the report-day close to `holdDays` trading days later — the
+ * actual outcome that matters (a beat that's already priced in can still drop).
+ */
+export function postEarningsReturn(
+  closes: DailyClose[],
+  iso: string,
+  holdDays = 5,
+): number | null {
+  if (closes.length === 0) return null;
+  const t = ts(iso);
+  let i = -1;
+  for (let k = 0; k < closes.length; k++) {
+    if (ts(closes[k].date) <= t) i = k;
+    else break;
+  }
+  if (i < 0) return null;
+  const after = closes[Math.min(i + holdDays, closes.length - 1)];
+  const before = closes[i];
+  if (!before || before.close <= 0 || !after) return null;
+  return after.close / before.close - 1;
+}
 
 function avg(a: number[]): number {
   return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
@@ -49,10 +75,11 @@ export function yoyAt(points: TrendPoint[], idx: number): number | null {
   return (recent - yearAgo) / yearAgo;
 }
 
-/** Build (momentum, beat) rows for one name from its trend + dated history. */
+/** Build rows for one name from its trend + dated history (+ optional prices). */
 export function backtestName(
   points: TrendPoint[],
   history: { date?: string; estimate: number; actual: number }[],
+  closes?: DailyClose[],
 ): BtRow[] {
   const rows: BtRow[] = [];
   for (const q of history) {
@@ -65,19 +92,38 @@ export function backtestName(
       beat: q.actual >= q.estimate,
       surprisePct:
         q.estimate !== 0 ? (q.actual - q.estimate) / Math.abs(q.estimate) : 0,
+      ret: closes && closes.length ? postEarningsReturn(closes, q.date) : null,
     });
   }
   return rows;
 }
 
-export type BtBucket = { n: number; beatRate: number; avgSurprise: number };
+export type BtBucket = {
+  n: number;
+  beatRate: number;
+  avgSurprise: number;
+  /** Rows that have a price return. */
+  retN: number;
+  /** Average ~1-week post-earnings return. */
+  avgReturn: number;
+  /** Share of prints with a positive post-earnings return. */
+  upRate: number;
+};
 export type BtResult = { n: number; pos: BtBucket; neg: BtBucket };
 
 function bucket(rows: BtRow[]): BtBucket {
+  const withRet = rows.filter((r) => r.ret !== null) as (BtRow & {
+    ret: number;
+  })[];
   return {
     n: rows.length,
     beatRate: rows.length ? rows.filter((r) => r.beat).length / rows.length : 0,
     avgSurprise: avg(rows.map((r) => r.surprisePct)),
+    retN: withRet.length,
+    avgReturn: avg(withRet.map((r) => r.ret)),
+    upRate: withRet.length
+      ? withRet.filter((r) => r.ret > 0).length / withRet.length
+      : 0,
   };
 }
 
