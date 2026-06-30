@@ -98,7 +98,9 @@ type FinnhubEarning = {
 export async function getEarningsHistory(
   symbol: string,
   limit = 4,
-): Promise<{ label: string; estimate: number; actual: number }[] | null> {
+): Promise<
+  { label: string; estimate: number; actual: number; date?: string }[] | null
+> {
   const key = process.env.FINNHUB_API_KEY;
   if (!key) return null;
 
@@ -121,6 +123,7 @@ export async function getEarningsHistory(
       label: `Q${r.quarter} '${String(r.year).slice(2)}`,
       estimate: r.estimate as number,
       actual: r.actual as number,
+      date: r.period, // fiscal period date — anchor for the backtest
     }));
   } catch {
     return null;

@@ -103,6 +103,59 @@ body {
   font-style: italic;
 }
 
+.bt-head {
+  margin: 0 0 0.8rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.bt-head strong {
+  color: var(--fg);
+}
+.bt-head em {
+  color: var(--accent);
+  font-style: normal;
+}
+.bt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+}
+.bt-cell {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.bt-cell.good {
+  border-color: rgba(43, 213, 118, 0.4);
+  background: rgba(43, 213, 118, 0.05);
+}
+.bt-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.bt-big {
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+}
+.bt-cell.good .bt-big {
+  color: var(--pos);
+}
+.bt-sub {
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+.bt-verdict {
+  margin: 0.8rem 0 0;
+  font-weight: 600;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
