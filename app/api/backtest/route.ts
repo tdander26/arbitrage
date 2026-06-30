@@ -47,22 +47,26 @@ export async function GET(req: NextRequest) {
   // REPORT dates — needed to time a price-return measure — aren't available on
   // free data, so the deployed backtest validates EPS beats; the price-return
   // outcome is left to the forward journal (which captures entry price live).
-  const perName = await Promise.all(
-    NAMES.map(async (n) => {
-      const [history, trend] = await Promise.all([
-        getEarningsHistory(n.ticker, 8),
-        getTrend(n.keyword, []),
-      ]);
-      if (!history || trend.source !== "live") {
-        return { ticker: n.ticker, live: false, rows: [] as BtRow[] };
-      }
-      return {
+  //
+  // Fetched SEQUENTIALLY: SerpApi rejects a 20-wide concurrent burst (which
+  // made most trends fall back to placeholder and get skipped). One-at-a-time
+  // is slower but every name's trend actually loads. Cached 14d afterward.
+  const perName: { ticker: string; live: boolean; rows: BtRow[] }[] = [];
+  for (const n of NAMES) {
+    const [history, trend] = await Promise.all([
+      getEarningsHistory(n.ticker, 8),
+      getTrend(n.keyword, []),
+    ]);
+    if (!history || trend.source !== "live") {
+      perName.push({ ticker: n.ticker, live: false, rows: [] });
+    } else {
+      perName.push({
         ticker: n.ticker,
         live: true,
         rows: backtestName(trend.points, history),
-      };
-    }),
-  );
+      });
+    }
+  }
 
   const rows = perName.flatMap((p) => p.rows);
   return NextResponse.json({
