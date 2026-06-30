@@ -1,4 +1,5 @@
 import Dashboard from "./Dashboard";
+import JournalPanel from "./JournalPanel";
 import BacktestPanel from "./BacktestPanel";
 
 export default function Home() {
@@ -40,6 +41,8 @@ export default function Home() {
       </details>
 
       <Dashboard />
+
+      <JournalPanel />
 
       <BacktestPanel />
 
