@@ -3,6 +3,7 @@ import { getNextEarnings, getEarningsHistory } from "@/lib/earnings";
 import { getTrend } from "@/lib/trends";
 import { trendStats, daysBetween } from "@/lib/enrich";
 import { beatRate, meaningfulBeatRate, computeSignal } from "@/lib/signal";
+import { getQuote } from "@/lib/quote";
 import { cleanTicker, cleanKeyword } from "@/lib/validate";
 import { rateLimit, clientKey } from "@/lib/ratelimit";
 
@@ -29,10 +30,11 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date();
-  const [earnings, history, trend] = await Promise.all([
+  const [earnings, history, trend, price] = await Promise.all([
     getNextEarnings(ticker, now),
     getEarningsHistory(ticker),
     getTrend(keyword, []),
+    getQuote(ticker),
   ]);
 
   const points = trend.points;
@@ -55,6 +57,7 @@ export async function GET(req: NextRequest) {
     earningsTentative: earnings ? true : undefined,
     estimateEps: earnings?.estimateEps,
     epsHistory: history ?? undefined,
+    price: price ?? undefined,
     daysToEarnings: earnings ? daysBetween(now, earnings.date) : null,
     trend: { points, source: trend.source },
     latest: stats.latest,

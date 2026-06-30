@@ -499,6 +499,11 @@ body {
   color: var(--muted);
   font-size: 0.9rem;
 }
+.price {
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+  color: var(--fg);
+}
 .status {
   font-size: 0.68rem;
   text-transform: uppercase;
