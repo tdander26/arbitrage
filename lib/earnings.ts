@@ -91,6 +91,44 @@ type FinnhubEarning = {
   year: number;
 };
 
+type FinnhubCalRow = {
+  date: string; // actual report date
+  epsActual?: number | null;
+  epsEstimate?: number | null;
+};
+
+/**
+ * Historical earnings reports for a symbol over [from, to], with the ACTUAL
+ * report date (not the fiscal-period date). Null if unavailable. Used by the
+ * backtest so the post-earnings price move is measured on the right day.
+ */
+export async function getEarningsCalendarRange(
+  symbol: string,
+  from: string,
+  to: string,
+): Promise<{ date: string; estimate: number; actual: number }[] | null> {
+  const key = process.env.FINNHUB_API_KEY;
+  if (!key) return null;
+  const url = `${BASE}?from=${from}&to=${to}&symbol=${encodeURIComponent(
+    symbol,
+  )}&token=${key}`;
+  try {
+    const res = await fetchWithTimeout(url, 5000);
+    if (!res.ok) return null;
+    const json = (await res.json()) as { earningsCalendar?: FinnhubCalRow[] };
+    const rows = (json.earningsCalendar ?? [])
+      .filter((r) => r.epsActual != null && r.epsEstimate != null && r.date)
+      .map((r) => ({
+        date: r.date,
+        estimate: r.epsEstimate as number,
+        actual: r.epsActual as number,
+      }));
+    return rows.length ? rows : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Trailing reported quarters for a symbol from Finnhub (oldest → newest),
  * used to compute beat-rate for custom tickers. Null if unavailable.

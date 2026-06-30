@@ -3,13 +3,21 @@
 import { useState } from "react";
 import type { BtResult } from "@/lib/backtest";
 
-type Resp = { asOf: string; namesUsed: number; result: BtResult };
+type Resp = {
+  asOf: string;
+  namesUsed: number;
+  pricesAvailable: boolean;
+  result: BtResult;
+};
 
 function pct(n: number) {
   return `${Math.round(n * 100)}%`;
 }
 function signed(n: number) {
   return `${n >= 0 ? "+" : ""}${Math.round(n * 100)}%`;
+}
+function signed1(n: number) {
+  return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
 }
 
 // Validation harness, loaded on demand (its upstream calls aren't cheap).
@@ -31,9 +39,10 @@ export default function BacktestPanel() {
   }
 
   const res = data?.result;
-  const edge =
-    res && res.pos.n > 0 && res.neg.n > 0
-      ? res.pos.beatRate - res.neg.beatRate
+  // The real edge: difference in post-earnings RETURN, rising vs flat search.
+  const retEdge =
+    res && res.pos.retN > 0 && res.neg.retN > 0
+      ? res.pos.avgReturn - res.neg.avgReturn
       : null;
 
   return (
@@ -58,33 +67,43 @@ export default function BacktestPanel() {
           <div className="bt-grid">
             <div className="bt-cell good">
               <span className="bt-label">Rising search</span>
-              <span className="bt-big">{pct(res.pos.beatRate)}</span>
+              <span className="bt-big">
+                {data?.pricesAvailable ? signed1(res.pos.avgReturn) : pct(res.pos.beatRate)}
+              </span>
               <span className="bt-sub">
-                beat · avg surprise {signed(res.pos.avgSurprise)} · n={res.pos.n}
+                {data?.pricesAvailable
+                  ? `avg 1wk return · ${pct(res.pos.upRate)} up · beat ${pct(res.pos.beatRate)} · n=${res.pos.n}`
+                  : `beat · surprise ${signed(res.pos.avgSurprise)} · n=${res.pos.n}`}
               </span>
             </div>
             <div className="bt-cell">
               <span className="bt-label">Flat / falling</span>
-              <span className="bt-big">{pct(res.neg.beatRate)}</span>
+              <span className="bt-big">
+                {data?.pricesAvailable ? signed1(res.neg.avgReturn) : pct(res.neg.beatRate)}
+              </span>
               <span className="bt-sub">
-                beat · avg surprise {signed(res.neg.avgSurprise)} · n={res.neg.n}
+                {data?.pricesAvailable
+                  ? `avg 1wk return · ${pct(res.neg.upRate)} up · beat ${pct(res.neg.beatRate)} · n=${res.neg.n}`
+                  : `beat · surprise ${signed(res.neg.avgSurprise)} · n=${res.neg.n}`}
               </span>
             </div>
           </div>
-          {edge !== null && (
+          {retEdge !== null && (
             <p className="bt-verdict">
-              {edge > 0.05
-                ? `Directional edge: rising-search names beat ${Math.round(edge * 100)} pts more often.`
-                : edge < -0.05
-                  ? "No edge here — rising search did NOT beat more often in this sample."
-                  : "Inconclusive — no meaningful difference in this small sample."}
+              {retEdge > 0.005
+                ? `Edge: rising-search names returned ${signed1(retEdge)} more in the week after earnings.`
+                : retEdge < -0.005
+                  ? "No edge — rising search did NOT lead to better post-earnings returns in this sample."
+                  : "Inconclusive — no meaningful return difference in this sample."}
             </p>
           )}
           <p className="disclaimer">
-            Directional only — small sample, the anchor uses the fiscal-period
-            date (±weeks of the real report), and search is a noisy proxy. The
-            real test is the forward record your Positioned entries build over
-            time.
+            {data?.pricesAvailable
+              ? "Post-earnings return = report-day close → ~5 trading days later (Stooq), using the real report date. "
+              : ""}
+            Still directional — ~{data?.namesUsed} names, a few years of history,
+            search is noisy, and a 1-week window misses longer drift. The
+            definitive test is the forward record your Positioned entries build.
           </p>
         </div>
       )}
