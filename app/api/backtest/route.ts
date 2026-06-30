@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getEarningsCalendarRange } from "@/lib/earnings";
+import { getEarningsHistory } from "@/lib/earnings";
 import { getTrend } from "@/lib/trends";
-import { getDailyCloses } from "@/lib/prices";
 import { backtestName, aggregate, type BtRow } from "@/lib/backtest";
 import { rateLimit, clientKey } from "@/lib/ratelimit";
 
@@ -42,17 +41,17 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date();
-  const to = now.toISOString().slice(0, 10);
-  const from = new Date(now.getTime() - 1100 * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
 
+  // Finnhub's free /stock/earnings reliably returns dated historical EPS (the
+  // /calendar endpoint is forward-only on free tier). Accurate historical
+  // REPORT dates — needed to time a price-return measure — aren't available on
+  // free data, so the deployed backtest validates EPS beats; the price-return
+  // outcome is left to the forward journal (which captures entry price live).
   const perName = await Promise.all(
     NAMES.map(async (n) => {
-      const [history, trend, closes] = await Promise.all([
-        getEarningsCalendarRange(n.ticker, from, to),
+      const [history, trend] = await Promise.all([
+        getEarningsHistory(n.ticker, 8),
         getTrend(n.keyword, []),
-        getDailyCloses(n.ticker),
       ]);
       if (!history || trend.source !== "live") {
         return { ticker: n.ticker, live: false, rows: [] as BtRow[] };
@@ -60,7 +59,7 @@ export async function GET(req: NextRequest) {
       return {
         ticker: n.ticker,
         live: true,
-        rows: backtestName(trend.points, history, closes ?? undefined),
+        rows: backtestName(trend.points, history),
       };
     }),
   );
@@ -69,7 +68,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     asOf: now.toISOString(),
     namesUsed: perName.filter((p) => p.live && p.rows.length > 0).length,
-    pricesAvailable: rows.some((r) => r.ret !== null),
+    pricesAvailable: false,
     result: aggregate(rows),
   });
 }
