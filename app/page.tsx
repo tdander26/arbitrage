@@ -1,4 +1,5 @@
 import Dashboard from "./Dashboard";
+import BacktestPanel from "./BacktestPanel";
 
 export default function Home() {
   return (
@@ -39,6 +40,8 @@ export default function Home() {
       </details>
 
       <Dashboard />
+
+      <BacktestPanel />
 
       <details className="howto risk collapsible">
         <summary>⚠ Edge &amp; risk — read this ▾</summary>
