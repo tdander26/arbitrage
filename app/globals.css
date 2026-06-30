@@ -156,6 +156,30 @@ body {
   font-weight: 600;
 }
 
+.journal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 0.6rem;
+}
+.journal-table th,
+.journal-table td {
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.journal-table thead th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+}
+.journal-table tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
